@@ -109,7 +109,7 @@ async def list_projects() -> list[ProjectResponse]:
         return projects
 
     for folder in sorted(DATA_DIR.iterdir()):
-        if not folder.is_dir():
+        if not folder.is_dir() or folder.name.startswith("."):
             continue
         meta = read_meta(folder.name)
         if meta:
