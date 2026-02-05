@@ -1,7 +1,9 @@
 <script setup lang="ts">
+import ServerDisconnectBanner from './components/ServerDisconnectBanner.vue'
 </script>
 
 <template>
+  <ServerDisconnectBanner />
   <RouterView />
 </template>
 
@@ -18,6 +20,7 @@
   --tag-completed: #34d399;
   --tag-discarded: #f87171;
   --tag-refs: #60a5fa;
+  --error: #dc2626;
 }
 
 * {
