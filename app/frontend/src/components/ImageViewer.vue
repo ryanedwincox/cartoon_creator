@@ -10,7 +10,7 @@ const emit = defineEmits<{
   close: []
 }>()
 
-const DATA_BASE = 'http://localhost:8000/data'
+const DATA_BASE = '/data'
 const imageUrl = `${DATA_BASE}/${props.projectId}/${props.filename}`
 
 const scale = ref(1)

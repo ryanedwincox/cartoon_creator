@@ -1,9 +1,8 @@
 <!-- Tag filter bar: multi-select badges with selection order indicators. -->
 <script setup lang="ts">
-import { computed } from 'vue'
 import { ALL_TAGS, type Tag } from '../composables/useProjects'
 
-const props = defineProps<{
+defineProps<{
   counts: Record<Tag, number>
   selectedTags: Tag[]
 }>()
@@ -19,14 +18,6 @@ const tagLabels: Record<Tag, string> = {
   refs: 'refs',
 }
 
-/** Map of selected tag → 1-based selection order for O(1) lookup. */
-const selectionOrder = computed(() => {
-  const map = new Map<Tag, number>()
-  props.selectedTags.forEach((tag, i) => {
-    map.set(tag, i + 1)
-  })
-  return map
-})
 </script>
 
 <template>
@@ -34,12 +25,9 @@ const selectionOrder = computed(() => {
     <button
       v-for="tag in ALL_TAGS"
       :key="tag"
-      :class="['filter-badge', `tag-${tag}`, { active: selectionOrder.has(tag) }]"
+      :class="['filter-badge', `tag-${tag}`, { active: selectedTags.includes(tag) }]"
       @click="emit('toggle', tag)"
     >
-      <span v-if="selectionOrder.has(tag)" class="order-badge">
-        {{ selectionOrder.get(tag) }}
-      </span>
       {{ tagLabels[tag] }}: {{ counts[tag] }}
     </button>
   </div>
@@ -74,19 +62,5 @@ const selectionOrder = computed(() => {
 .filter-badge.active {
   opacity: 1;
   transform: scale(1.05);
-}
-
-.order-badge {
-  display: inline-flex;
-  align-items: center;
-  justify-content: center;
-  width: 1.125rem;
-  height: 1.125rem;
-  border-radius: 50%;
-  background: rgba(0, 0, 0, 0.2);
-  color: inherit;
-  font-size: 0.625rem;
-  font-weight: 700;
-  line-height: 1;
 }
 </style>

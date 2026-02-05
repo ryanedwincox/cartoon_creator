@@ -1,6 +1,6 @@
 import { ref } from 'vue'
 
-const API_BASE = 'http://localhost:8000/api'
+const API_BASE = '/api'
 
 export interface ChatMessage {
   role: 'user' | 'assistant'

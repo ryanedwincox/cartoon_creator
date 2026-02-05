@@ -11,7 +11,7 @@ const { messages, loading, streaming, currentResponse, loadHistory, sendMessage,
 const messageInput = ref('')
 const messagesContainer = ref<HTMLElement | null>(null)
 
-const DATA_BASE = 'http://localhost:8000/data'
+const DATA_BASE = '/data'
 
 onMounted(() => {
   loadHistory()

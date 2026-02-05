@@ -14,7 +14,7 @@ const emit = defineEmits<{
 const longPressTimer = ref<number | null>(null)
 const isLongPress = ref(false)
 
-const DATA_BASE = 'http://localhost:8000/data'
+const DATA_BASE = '/data'
 
 const thumbnailUrl = props.project.thumbnail
   ? `${DATA_BASE}/${props.project.id}/${props.project.thumbnail}`

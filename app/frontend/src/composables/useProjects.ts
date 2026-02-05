@@ -6,7 +6,7 @@ const API_BASE = '/api'
 export type Tag = 'in_progress' | 'completed' | 'discarded' | 'refs'
 
 export const ALL_TAGS: Tag[] = ['in_progress', 'completed', 'discarded', 'refs']
-export const DEFAULT_SELECTED_TAGS: Tag[] = ['completed', 'discarded', 'refs']
+export const DEFAULT_SELECTED_TAGS: Tag[] = ['in_progress']
 
 export interface Project {
   id: string

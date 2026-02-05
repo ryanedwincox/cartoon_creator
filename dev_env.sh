@@ -22,3 +22,10 @@ else
 fi
 
 echo "Virtual environment activated: $VENV_DIR"
+
+# Install frontend dependencies if needed
+FRONTEND_DIR="$SCRIPT_DIR/app/frontend"
+if [[ ! -d "$FRONTEND_DIR/node_modules" ]]; then
+    echo "Installing frontend dependencies..."
+    (cd "$FRONTEND_DIR" && npm install)
+fi

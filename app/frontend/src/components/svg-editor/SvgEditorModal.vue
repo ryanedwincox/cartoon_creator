@@ -14,8 +14,8 @@ const emit = defineEmits<{
   close: []
 }>()
 
-const API_BASE = 'http://localhost:8000/api'
-const DATA_BASE = 'http://localhost:8000/data'
+const API_BASE = '/api'
+const DATA_BASE = '/data'
 
 const editor = useSvgEditor()
 provide('svgEditor', editor)
