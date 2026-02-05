@@ -31,6 +31,7 @@ class ProjectResponse(BaseModel):
     created: str
     modified: str
     thumbnail: Optional[str] = None
+    thumbnail_mtime: Optional[float] = None
 
 
 class CreateProjectRequest(BaseModel):
@@ -78,18 +79,18 @@ def write_meta(project_id: str, meta: ProjectMeta) -> None:
         json.dump(meta.model_dump(), f, indent=2)
 
 
-def find_thumbnail(project_dir: Path) -> Optional[str]:
-    """Find first PNG file as thumbnail."""
+def find_thumbnail(project_dir: Path) -> tuple[Optional[str], Optional[float]]:
+    """Find first PNG file as thumbnail. Returns (filename, mtime) or (None, None)."""
     for f in sorted(project_dir.iterdir()):
         if f.suffix.lower() == ".png" and not f.name.startswith("."):
-            return f.name
-    return None
+            return f.name, f.stat().st_mtime
+    return None, None
 
 
 def project_to_response(project_id: str, meta: ProjectMeta) -> ProjectResponse:
     """Convert project to response."""
     project_dir = DATA_DIR / project_id
-    thumbnail = find_thumbnail(project_dir)
+    thumbnail, thumbnail_mtime = find_thumbnail(project_dir)
     return ProjectResponse(
         id=project_id,
         name=meta.name,
@@ -97,6 +98,7 @@ def project_to_response(project_id: str, meta: ProjectMeta) -> ProjectResponse:
         created=meta.created,
         modified=meta.modified,
         thumbnail=thumbnail,
+        thumbnail_mtime=thumbnail_mtime,
     )
 
 

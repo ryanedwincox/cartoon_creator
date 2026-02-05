@@ -19,6 +19,7 @@ class FileInfo(BaseModel):
     name: str
     type: FileType
     size: int
+    mtime: float
     is_hidden: bool
 
 
@@ -57,10 +58,12 @@ async def list_files(project_id: str) -> list[FileInfo]:
     for f in sorted(project_dir.iterdir()):
         if not f.is_file():
             continue
+        stat = f.stat()
         files.append(FileInfo(
             name=f.name,
             type=get_file_type(f.name),
-            size=f.stat().st_size,
+            size=stat.st_size,
+            mtime=stat.st_mtime,
             is_hidden=f.name.startswith("."),
         ))
 

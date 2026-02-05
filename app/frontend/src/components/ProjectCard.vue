@@ -1,5 +1,6 @@
+<!-- ProjectCard: Project thumbnail card with long-press edit support. -->
 <script setup lang="ts">
-import { ref } from 'vue'
+import { computed, ref } from 'vue'
 import type { Project } from '../composables/useProjects'
 
 const props = defineProps<{
@@ -16,9 +17,11 @@ const isLongPress = ref(false)
 
 const DATA_BASE = '/data'
 
-const thumbnailUrl = props.project.thumbnail
-  ? `${DATA_BASE}/${props.project.id}/${props.project.thumbnail}`
-  : null
+const thumbnailUrl = computed(() => {
+  if (!props.project.thumbnail) return null
+  const base = `${DATA_BASE}/${props.project.id}/${props.project.thumbnail}`
+  return props.project.thumbnail_mtime ? `${base}?v=${props.project.thumbnail_mtime}` : base
+})
 
 const handlePointerDown = () => {
   isLongPress.value = false

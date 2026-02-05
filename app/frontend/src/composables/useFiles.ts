@@ -10,6 +10,7 @@ export interface FileInfo {
   name: string
   type: FileType
   size: number
+  mtime: number
   is_hidden: boolean
 }
 
@@ -29,8 +30,9 @@ export function useFiles(projectId: string) {
     }
   }
 
-  const getFileUrl = (filename: string) => {
-    return `${DATA_BASE}/${projectId}/${filename}`
+  const getFileUrl = (filename: string, mtime?: number) => {
+    const base = `${DATA_BASE}/${projectId}/${filename}`
+    return mtime ? `${base}?v=${mtime}` : base
   }
 
   const saveFile = async (filename: string, content: string) => {

@@ -1,9 +1,11 @@
+<!-- ImageViewer: Full-screen zoomable image viewer with pinch/scroll zoom and pan. -->
 <script setup lang="ts">
-import { ref, onMounted, onUnmounted } from 'vue'
+import { ref, computed, onMounted, onUnmounted } from 'vue'
 
 const props = defineProps<{
   projectId: string
   filename: string
+  mtime?: number | null
 }>()
 
 const emit = defineEmits<{
@@ -11,7 +13,10 @@ const emit = defineEmits<{
 }>()
 
 const DATA_BASE = '/data'
-const imageUrl = `${DATA_BASE}/${props.projectId}/${props.filename}`
+const imageUrl = computed(() => {
+  const basePath = `${DATA_BASE}/${props.projectId}/${props.filename}`
+  return props.mtime ? `${basePath}?v=${props.mtime}` : basePath
+})
 
 const scale = ref(1)
 const translateX = ref(0)

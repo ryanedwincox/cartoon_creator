@@ -8,7 +8,7 @@ const props = defineProps<{
 }>()
 
 const emit = defineEmits<{
-  'file-click': [filename: string, type: FileType]
+  'file-click': [filename: string, type: FileType, mtime: number]
 }>()
 
 const { files, loading, loadFiles } = useFiles(props.projectId)
@@ -50,7 +50,7 @@ const formatSize = (bytes: number): string => {
         :key="file.name"
         class="file-item"
         :data-file="file.name"
-        @click="emit('file-click', file.name, file.type)"
+        @click="emit('file-click', file.name, file.type, file.mtime)"
       >
         <span class="file-icon">{{ getIcon(file.type) }}</span>
         <div class="file-info">

@@ -15,6 +15,7 @@ export interface Project {
   created: string
   modified: string
   thumbnail: string | null
+  thumbnail_mtime: number | null
 }
 
 // Global: shared across HomeView + ProjectView to avoid redundant fetches

@@ -20,6 +20,7 @@ const { getProject } = useProjects()
 const project = ref<Project | null>(null)
 const activeTab = ref<'chat' | 'files'>('chat')
 const viewingImage = ref<string | null>(null)
+const viewingImageMtime = ref<number | null>(null)
 const viewingText = ref<string | null>(null)
 const editingSvg = ref<string | null>(null)
 
@@ -36,9 +37,10 @@ const handleBack = () => {
   router.push('/')
 }
 
-const handleFileClick = (filename: string, type: FileType) => {
+const handleFileClick = (filename: string, type: FileType, mtime: number) => {
   if (type === 'png') {
     viewingImage.value = filename
+    viewingImageMtime.value = mtime
   } else if (type === 'svg') {
     editingSvg.value = filename
   } else if (type === 'txt' || type === 'json') {
@@ -101,6 +103,7 @@ const handleFileClick = (filename: string, type: FileType) => {
       v-if="viewingImage"
       :project-id="id"
       :filename="viewingImage"
+      :mtime="viewingImageMtime"
       @close="viewingImage = null"
     />
 
