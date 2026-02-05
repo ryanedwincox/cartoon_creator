@@ -1,3 +1,4 @@
+<!-- [Component]: Interactive SVG drawing canvas. Responsible for mouse/keyboard event handling, viewport pan/zoom, and rendering editor state. NOT concerned with data persistence or editor business logic. -->
 <script setup lang="ts">
 import { ref, inject, computed, onMounted, onUnmounted } from 'vue'
 import type { Point } from '../../composables/useSvgEditor'
@@ -86,7 +87,7 @@ const handleMouseUp = () => {
 const handleWheel = (e: WheelEvent) => {
   e.preventDefault()
   const delta = e.deltaY > 0 ? 0.9 : 1.1
-  const newZoom = Math.min(Math.max(0.25, editor.zoom.value * delta), 4)
+  const newZoom = Math.min(Math.max(editor.MIN_ZOOM, editor.zoom.value * delta), editor.MAX_ZOOM)
 
   // Zoom toward cursor
   const rect = canvasRef.value?.getBoundingClientRect()
@@ -200,8 +201,8 @@ const cursorStyle = computed(() => {
     <rect
       x="0"
       y="0"
-      :width="editor.CANVAS_SIZE"
-      :height="editor.CANVAS_SIZE"
+      :width="editor.sourceWidth.value"
+      :height="editor.sourceHeight.value"
       fill="white"
       stroke="#ccc"
       stroke-width="1"

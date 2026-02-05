@@ -1,3 +1,4 @@
+// [Composable]: SVG editor state and operations. Responsible for canvas state, path/bubble CRUD, undo/redo, import/export, zoom/pan. NOT concerned with DOM event handling or rendering.
 import { ref, reactive, computed } from 'vue'
 
 export type Tool = 'select' | 'node' | 'draw' | 'erase' | 'bubble' | 'thought'
@@ -33,6 +34,9 @@ export interface UndoState {
 }
 
 const CANVAS_SIZE = 500
+const MIN_ZOOM = 0.25
+const MAX_ZOOM = 4
+const FIT_VIEW_FILL_RATIO = 0.9
 
 export function useSvgEditor() {
   const currentTool = ref<Tool>('select')
@@ -57,6 +61,9 @@ export function useSvgEditor() {
   const zoom = ref(1)
   const panX = ref(0)
   const panY = ref(0)
+
+  const sourceWidth = ref(CANVAS_SIZE)
+  const sourceHeight = ref(CANVAS_SIZE)
 
   const saveState = () => {
     undoStack.value.push({
@@ -115,8 +122,8 @@ export function useSvgEditor() {
 
   const addBubble = (type: 'oval' | 'thought') => {
     saveState()
-    const centerX = CANVAS_SIZE / 2 - panX.value / zoom.value
-    const centerY = CANVAS_SIZE / 2 - panY.value / zoom.value
+    const centerX = (CANVAS_SIZE / 2 - panX.value) / zoom.value
+    const centerY = (CANVAS_SIZE / 2 - panY.value) / zoom.value
 
     bubbles.value.push({
       id: generateId(),
@@ -177,7 +184,7 @@ export function useSvgEditor() {
     const artPaths = paths.value.filter(p => p.layer === 'art')
     const bubbleElements = bubbles.value
 
-    let svg = `<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 ${CANVAS_SIZE} ${CANVAS_SIZE}">\n`
+    let svg = `<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 ${sourceWidth.value} ${sourceHeight.value}">\n`
 
     // Art layer
     svg += `  <g id="art-layer">\n`
@@ -249,6 +256,36 @@ export function useSvgEditor() {
         })
       }
     }
+
+    fitToContent(doc.documentElement as SVGSVGElement)
+  }
+
+  const fitToContent = (svgRoot: SVGSVGElement | null = null) => {
+    let originX = 0
+    let originY = 0
+    let contentWidth = sourceWidth.value
+    let contentHeight = sourceHeight.value
+
+    if (svgRoot) {
+      const dims = parseSvgDimensions(svgRoot)
+      originX = dims.originX
+      originY = dims.originY
+      contentWidth = dims.width
+      contentHeight = dims.height
+
+      sourceWidth.value = contentWidth
+      sourceHeight.value = contentHeight
+    }
+
+    const maxDimension = Math.max(contentWidth, contentHeight)
+    const fitZoom = (CANVAS_SIZE / maxDimension) * FIT_VIEW_FILL_RATIO
+    zoom.value = Math.min(Math.max(MIN_ZOOM, fitZoom), MAX_ZOOM)
+
+    const viewSize = CANVAS_SIZE / zoom.value
+    const offsetX = (viewSize - contentWidth) / 2 - originX
+    const offsetY = (viewSize - contentHeight) / 2 - originY
+    panX.value = offsetX * zoom.value
+    panY.value = offsetY * zoom.value
   }
 
   const canUndo = computed(() => undoStack.value.length > 0)
@@ -267,6 +304,8 @@ export function useSvgEditor() {
     zoom,
     panX,
     panY,
+    sourceWidth,
+    sourceHeight,
 
     // Actions
     saveState,
@@ -283,6 +322,7 @@ export function useSvgEditor() {
     toggleLayer,
     exportSvg,
     importSvg,
+    fitToContent,
 
     // Computed
     canUndo,
@@ -290,7 +330,34 @@ export function useSvgEditor() {
 
     // Constants
     CANVAS_SIZE,
+    MIN_ZOOM,
+    MAX_ZOOM,
   }
+}
+
+interface SvgDimensions {
+  originX: number
+  originY: number
+  width: number
+  height: number
+}
+
+function parseSvgDimensions(svgRoot: SVGSVGElement): SvgDimensions {
+  const viewBoxAttr = svgRoot.getAttribute('viewBox')
+  if (viewBoxAttr) {
+    const parts = viewBoxAttr.split(/[\s,]+/).map(Number)
+    if (parts.length === 4 && parts.every(n => !isNaN(n))) {
+      return { originX: parts[0], originY: parts[1], width: parts[2], height: parts[3] }
+    }
+  }
+
+  const w = parseFloat(svgRoot.getAttribute('width') || '0')
+  const h = parseFloat(svgRoot.getAttribute('height') || '0')
+  if (w > 0 && h > 0) {
+    return { originX: 0, originY: 0, width: w, height: h }
+  }
+
+  return { originX: 0, originY: 0, width: CANVAS_SIZE, height: CANVAS_SIZE }
 }
 
 function escapeXml(str: string): string {
