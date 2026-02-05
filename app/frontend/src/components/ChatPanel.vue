@@ -1,3 +1,4 @@
+<!-- ChatPanel: Streaming chat interface for agent conversation within a project. -->
 <script setup lang="ts">
 import { ref, onMounted, nextTick, watch } from 'vue'
 import { useChat } from '../composables/useChat'
@@ -13,8 +14,12 @@ const messagesContainer = ref<HTMLElement | null>(null)
 
 const DATA_BASE = '/data'
 
-onMounted(() => {
-  loadHistory()
+onMounted(async () => {
+  try {
+    await loadHistory()
+  } catch (e) {
+    console.error('Failed to load chat history', e)
+  }
 })
 
 const scrollToBottom = () => {
@@ -35,10 +40,10 @@ const handleSend = async () => {
   await sendMessage(text)
 }
 
-const handleKeyDown = (e: KeyboardEvent) => {
+const handleKeyDown = async (e: KeyboardEvent) => {
   if (e.key === 'Enter' && !e.shiftKey) {
     e.preventDefault()
-    handleSend()
+    await handleSend()
   }
 }
 </script>
@@ -120,7 +125,7 @@ const handleKeyDown = (e: KeyboardEvent) => {
 .chat-panel {
   display: flex;
   flex-direction: column;
-  height: calc(100vh - 8rem);
+  height: 100%;
 }
 
 .chat-actions {
@@ -129,6 +134,7 @@ const handleKeyDown = (e: KeyboardEvent) => {
   justify-content: flex-end;
   padding: 0.5rem 1rem;
   border-bottom: 1px solid var(--border);
+  flex-shrink: 0;
 }
 
 .btn-sm {
@@ -138,6 +144,7 @@ const handleKeyDown = (e: KeyboardEvent) => {
 
 .messages {
   flex: 1;
+  min-height: 0;
   overflow-y: auto;
   padding: 1rem;
   display: flex;
@@ -211,6 +218,7 @@ const handleKeyDown = (e: KeyboardEvent) => {
   padding: 1rem;
   border-top: 1px solid var(--border);
   background: var(--card-bg);
+  flex-shrink: 0;
 }
 
 .chat-input {

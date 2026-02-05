@@ -1,5 +1,6 @@
+<!-- ProjectView: Agent chat and files interface for a single project. -->
 <script setup lang="ts">
-import { ref, onMounted, watch } from 'vue'
+import { ref, onMounted } from 'vue'
 import { useRouter } from 'vue-router'
 import { useProjects, type Project } from '../composables/useProjects'
 import ChatPanel from '../components/ChatPanel.vue'
@@ -22,7 +23,8 @@ const editingSvg = ref<string | null>(null)
 onMounted(async () => {
   try {
     project.value = await getProject(props.id)
-  } catch {
+  } catch (e) {
+    console.error('Failed to load project', e)
     router.replace('/')
   }
 })
@@ -109,9 +111,23 @@ const handleFileClick = (filename: string, type: string) => {
 
 <style scoped>
 .project-view {
-  min-height: 100vh;
+  /* dvh for mobile viewport, vh as fallback */
+  height: 100vh;
+  height: 100dvh;
   display: flex;
   flex-direction: column;
+  overflow: hidden;
+}
+
+.content-with-nav {
+  flex: 1;
+  min-height: 0;
+  overflow: hidden;
+}
+
+.header {
+  position: static; /* flex layout handles pinning; override global sticky */
+  flex-shrink: 0;
 }
 
 .header svg {

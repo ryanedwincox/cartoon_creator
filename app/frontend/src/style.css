@@ -99,15 +99,12 @@
 
 /* Bottom navigation */
 .bottom-nav {
-  position: fixed;
-  bottom: 0;
-  left: 0;
-  right: 0;
   display: flex;
   background: var(--card-bg);
   border-top: 1px solid var(--border);
   padding: 0.5rem;
   padding-bottom: max(0.5rem, env(safe-area-inset-bottom));
+  flex-shrink: 0;
 }
 
 .bottom-nav button {
