@@ -1,26 +1,32 @@
+<!-- Home page: project cards grid with multi-select tag filtering. -->
 <script setup lang="ts">
 import { ref, computed, onMounted } from 'vue'
 import { useRouter } from 'vue-router'
-import { useProjects, type Tag } from '../composables/useProjects'
+import { useProjects, ALL_TAGS, DEFAULT_SELECTED_TAGS, type Tag } from '../composables/useProjects'
 import ProjectCard from '../components/ProjectCard.vue'
 import TagFilter from '../components/TagFilter.vue'
 import CreateProjectModal from '../components/CreateProjectModal.vue'
 
 const router = useRouter()
-const { projects, loading, fetchProjects, createProject, updateProject, tagCounts, filterByTag } = useProjects()
+const { loading, fetchProjects, createProject, updateProject, tagCounts, filterByTags } = useProjects()
 
-const selectedTag = ref<Tag | null>(null)
+const selectedTags = ref<Tag[]>([...DEFAULT_SELECTED_TAGS])
 const showCreateModal = ref(false)
 const editingProject = ref<{ id: string; name: string; tag: Tag } | null>(null)
 
-const filteredProjects = computed(() => filterByTag(selectedTag.value))
+const filteredProjects = computed(() => filterByTags(selectedTags.value))
 
-onMounted(() => {
-  fetchProjects()
+onMounted(async () => {
+  await fetchProjects()
 })
 
-const handleTagSelect = (tag: Tag | null) => {
-  selectedTag.value = selectedTag.value === tag ? null : tag
+const handleTagToggle = (tag: Tag) => {
+  const idx = selectedTags.value.indexOf(tag)
+  if (idx >= 0) {
+    selectedTags.value = selectedTags.value.filter(t => t !== tag)
+  } else {
+    selectedTags.value = [...selectedTags.value, tag]
+  }
 }
 
 const handleProjectClick = (id: string) => {
@@ -57,8 +63,8 @@ const handleUpdateProject = async () => {
     <!-- Tag filters -->
     <TagFilter
       :counts="tagCounts"
-      :selected="selectedTag"
-      @select="handleTagSelect"
+      :selected-tags="selectedTags"
+      @toggle="handleTagToggle"
     />
 
     <!-- Projects grid -->
@@ -109,7 +115,7 @@ const handleUpdateProject = async () => {
           <label>Tag</label>
           <div class="tag-options">
             <button
-              v-for="tag in ['in_progress', 'completed', 'discarded', 'refs'] as Tag[]"
+              v-for="tag in ALL_TAGS"
               :key="tag"
               :class="['tag', `tag-${tag}`, { active: editingProject.tag === tag }]"
               @click="editingProject.tag = tag"

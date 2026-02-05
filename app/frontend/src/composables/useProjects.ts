@@ -1,8 +1,12 @@
+// Project CRUD composable: fetch, create, update, delete projects with tag-based filtering.
 import { ref, computed } from 'vue'
 
-const API_BASE = 'http://localhost:8000/api'
+const API_BASE = '/api'
 
 export type Tag = 'in_progress' | 'completed' | 'discarded' | 'refs'
+
+export const ALL_TAGS: Tag[] = ['in_progress', 'completed', 'discarded', 'refs']
+export const DEFAULT_SELECTED_TAGS: Tag[] = ['completed', 'discarded', 'refs']
 
 export interface Project {
   id: string
@@ -13,6 +17,7 @@ export interface Project {
   thumbnail: string | null
 }
 
+// Global: shared across HomeView + ProjectView to avoid redundant fetches
 const projects = ref<Project[]>([])
 const loading = ref(false)
 const error = ref<string | null>(null)
@@ -73,21 +78,16 @@ export function useProjects() {
   }
 
   const tagCounts = computed(() => {
-    const counts: Record<Tag, number> = {
-      in_progress: 0,
-      completed: 0,
-      discarded: 0,
-      refs: 0,
-    }
+    const counts = Object.fromEntries(ALL_TAGS.map(t => [t, 0])) as Record<Tag, number>
     for (const p of projects.value) {
       counts[p.tag]++
     }
     return counts
   })
 
-  const filterByTag = (tag: Tag | null) => {
-    if (!tag) return projects.value
-    return projects.value.filter(p => p.tag === tag)
+  const filterByTags = (tags: Tag[]) => {
+    if (tags.length === 0) return projects.value
+    return projects.value.filter(p => tags.includes(p.tag))
   }
 
   return {
@@ -100,6 +100,6 @@ export function useProjects() {
     deleteProject,
     getProject,
     tagCounts,
-    filterByTag,
+    filterByTags,
   }
 }
