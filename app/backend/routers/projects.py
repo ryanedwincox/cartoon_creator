@@ -1,6 +1,5 @@
 """Project CRUD operations."""
 import json
-import os
 import re
 from datetime import datetime
 from pathlib import Path
@@ -9,9 +8,9 @@ from typing import Literal, Optional
 from fastapi import APIRouter, HTTPException
 from pydantic import BaseModel
 
-router = APIRouter()
+from config import DATA_DIR
 
-DATA_DIR = Path(os.path.expanduser("~/ryan_ws/incatpacitated"))
+router = APIRouter()
 
 Tag = Literal["in_progress", "completed", "discarded", "refs"]
 

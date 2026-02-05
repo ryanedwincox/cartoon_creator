@@ -1,6 +1,5 @@
 """File operations for projects."""
 import asyncio
-import os
 from pathlib import Path
 from typing import Literal, Optional
 
@@ -8,9 +7,9 @@ from fastapi import APIRouter, HTTPException, UploadFile, File
 from fastapi.responses import FileResponse
 from pydantic import BaseModel
 
-router = APIRouter()
+from config import DATA_DIR
 
-DATA_DIR = Path(os.path.expanduser("~/ryan_ws/incatpacitated"))
+router = APIRouter()
 
 FileType = Literal["png", "svg", "json", "txt", "other"]
 

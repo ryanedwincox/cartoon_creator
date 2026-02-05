@@ -23,6 +23,17 @@ fi
 
 echo "Virtual environment activated: $VENV_DIR"
 
+# Source .env for API keys (e.g. GEMINI_API_KEY)
+ENV_FILE="$SCRIPT_DIR/.env"
+if [[ -f "$ENV_FILE" ]]; then
+    set -a
+    source "$ENV_FILE"
+    set +a
+    echo "Loaded environment from .env"
+else
+    echo "Warning: No .env file found at $ENV_FILE"
+fi
+
 # Install frontend dependencies if needed
 FRONTEND_DIR="$SCRIPT_DIR/app/frontend"
 if [[ ! -d "$FRONTEND_DIR/node_modules" ]]; then

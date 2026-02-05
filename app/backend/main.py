@@ -1,10 +1,9 @@
 """FastAPI backend for Cartoons app."""
-import os
-from pathlib import Path
 from fastapi import FastAPI
 from fastapi.middleware.cors import CORSMiddleware
 from fastapi.staticfiles import StaticFiles
 
+from config import DATA_DIR
 from routers import projects, files, chat
 
 app = FastAPI(title="Cartoons API", version="1.0.0")
@@ -18,8 +17,7 @@ app.add_middleware(
     allow_headers=["*"],
 )
 
-# Data directory
-DATA_DIR = Path(os.path.expanduser("~/ryan_ws/incatpacitated"))
+# Ensure data directory exists
 DATA_DIR.mkdir(parents=True, exist_ok=True)
 
 # Include routers

@@ -12,7 +12,7 @@ from PIL import Image
 
 REF_SIZE = (300, 300)
 
-API_KEY = "AIzaSyCZ18z_XTeIDgpQ5jYNpDVpU-us7CIGF7k"
+API_KEY = os.environ.get("GEMINI_API_KEY", "")
 MODEL = "gemini-3-pro-image-preview"
 URL = f"https://generativelanguage.googleapis.com/v1beta/models/{MODEL}:generateContent?key={API_KEY}"
 

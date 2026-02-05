@@ -6,8 +6,8 @@ set -e
 SCRIPT_DIR="$(cd "$(dirname "$0")" && pwd)"
 cd "$SCRIPT_DIR"
 
-# Create data directory if needed
-mkdir -p ~/ryan_ws/incatpacitated
+# Source dev environment (venv + API keys)
+source "$SCRIPT_DIR/dev_env.sh"
 
 # Function to cleanup on exit
 cleanup() {
@@ -22,7 +22,6 @@ trap cleanup SIGINT SIGTERM
 # Start backend
 echo "Starting backend on http://localhost:8000..."
 cd "$SCRIPT_DIR/app/backend"
-source venv/bin/activate
 uvicorn main:app --host 0.0.0.0 --port 8000 --reload &
 BACKEND_PID=$!
 

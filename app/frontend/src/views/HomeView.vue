@@ -57,7 +57,7 @@ const handleUpdateProject = async () => {
   <div class="home">
     <!-- Header -->
     <header class="home-header">
-      <h1>incatpacitated</h1>
+      <h1>cartoon creator</h1>
     </header>
 
     <!-- Tag filters -->

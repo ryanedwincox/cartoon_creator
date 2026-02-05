@@ -9,11 +9,10 @@ from fastapi import APIRouter, HTTPException
 from fastapi.responses import StreamingResponse
 from pydantic import BaseModel
 
+from config import DATA_DIR, CARTOONS_DIR
+
 logger = logging.getLogger(__name__)
 router = APIRouter()
-
-DATA_DIR = Path.home() / "ryan_ws" / "incatpacitated"
-CARTOONS_DIR = Path("/home/ryan/ryan_ws/cartoons")
 
 # Track active agent processes
 active_agents: dict[str, asyncio.subprocess.Process] = {}
