@@ -3,9 +3,11 @@
 import { ref, onMounted } from 'vue'
 import { useRouter } from 'vue-router'
 import { useProjects, type Project } from '../composables/useProjects'
+import { type FileType } from '../composables/useFiles'
 import ChatPanel from '../components/ChatPanel.vue'
 import FilesPanel from '../components/FilesPanel.vue'
 import ImageViewer from '../components/ImageViewer.vue'
+import TextViewer from '../components/TextViewer.vue'
 import SvgEditorModal from '../components/svg-editor/SvgEditorModal.vue'
 
 const props = defineProps<{
@@ -18,6 +20,7 @@ const { getProject } = useProjects()
 const project = ref<Project | null>(null)
 const activeTab = ref<'chat' | 'files'>('chat')
 const viewingImage = ref<string | null>(null)
+const viewingText = ref<string | null>(null)
 const editingSvg = ref<string | null>(null)
 
 onMounted(async () => {
@@ -33,11 +36,13 @@ const handleBack = () => {
   router.push('/')
 }
 
-const handleFileClick = (filename: string, type: string) => {
+const handleFileClick = (filename: string, type: FileType) => {
   if (type === 'png') {
     viewingImage.value = filename
   } else if (type === 'svg') {
     editingSvg.value = filename
+  } else if (type === 'txt' || type === 'json') {
+    viewingText.value = filename
   }
 }
 </script>
@@ -97,6 +102,14 @@ const handleFileClick = (filename: string, type: string) => {
       :project-id="id"
       :filename="viewingImage"
       @close="viewingImage = null"
+    />
+
+    <!-- Text Viewer -->
+    <TextViewer
+      v-if="viewingText"
+      :project-id="id"
+      :filename="viewingText"
+      @close="viewingText = null"
     />
 
     <!-- SVG Editor -->

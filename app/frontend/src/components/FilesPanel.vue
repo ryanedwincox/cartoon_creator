@@ -1,5 +1,6 @@
+<!-- FilesPanel: Displays project file list with icons, sizes, and click-to-open. -->
 <script setup lang="ts">
-import { onMounted } from 'vue'
+import { computed, onMounted } from 'vue'
 import { useFiles, type FileType } from '../composables/useFiles'
 
 const props = defineProps<{
@@ -12,6 +13,8 @@ const emit = defineEmits<{
 
 const { files, loading, loadFiles } = useFiles(props.projectId)
 
+const visibleFiles = computed(() => files.value.filter((f) => !f.is_hidden))
+
 onMounted(() => {
   loadFiles()
 })
@@ -21,6 +24,7 @@ const getIcon = (type: FileType): string => {
     case 'png': return '🖼️'
     case 'svg': return '🎨'
     case 'json': return '📄'
+    case 'txt': return '📝'
     default: return '📁'
   }
 }
@@ -36,15 +40,15 @@ const formatSize = (bytes: number): string => {
   <div class="files-panel">
     <div v-if="loading" class="loading">Loading files...</div>
 
-    <div v-else-if="files.length === 0" class="empty">
+    <div v-else-if="visibleFiles.length === 0" class="empty">
       No files yet. Start chatting to generate images!
     </div>
 
     <div v-else class="file-list">
       <div
-        v-for="file in files"
+        v-for="file in visibleFiles"
         :key="file.name"
-        :class="['file-item', { hidden: file.is_hidden }]"
+        class="file-item"
         :data-file="file.name"
         @click="emit('file-click', file.name, file.type)"
       >
@@ -92,10 +96,6 @@ const formatSize = (bytes: number): string => {
 
 .file-item:hover {
   background: var(--border);
-}
-
-.file-item.hidden {
-  opacity: 0.5;
 }
 
 .file-icon {

@@ -1,4 +1,5 @@
 """File operations for projects."""
+import asyncio
 import os
 from pathlib import Path
 from typing import Literal, Optional
@@ -11,7 +12,7 @@ router = APIRouter()
 
 DATA_DIR = Path(os.path.expanduser("~/ryan_ws/incatpacitated"))
 
-FileType = Literal["png", "svg", "json", "other"]
+FileType = Literal["png", "svg", "json", "txt", "other"]
 
 
 class FileInfo(BaseModel):
@@ -20,6 +21,16 @@ class FileInfo(BaseModel):
     type: FileType
     size: int
     is_hidden: bool
+
+
+TEXT_EXTENSIONS = frozenset({".txt", ".md", ".log", ".csv", ".xml", ".yaml", ".yml", ".toml", ".ini", ".cfg", ".conf"})
+
+MAX_TEXT_FILE_SIZE = 1_000_000  # 1 MB
+
+
+class TextContent(BaseModel):
+    """Response model for text file content."""
+    content: str
 
 
 def get_file_type(name: str) -> FileType:
@@ -31,6 +42,8 @@ def get_file_type(name: str) -> FileType:
         return "svg"
     elif ext == ".json":
         return "json"
+    elif ext in TEXT_EXTENSIONS:
+        return "txt"
     return "other"
 
 
@@ -53,6 +66,27 @@ async def list_files(project_id: str) -> list[FileInfo]:
         ))
 
     return files
+
+
+@router.get("/{project_id}/{filename}/text")
+async def get_file_text(project_id: str, filename: str) -> TextContent:
+    """Read a text file and return its content as JSON."""
+    file_path = (DATA_DIR / project_id / filename).resolve()
+    if not file_path.is_relative_to(DATA_DIR / project_id):
+        raise HTTPException(status_code=400, detail="Invalid filename")
+    if not file_path.exists():
+        raise HTTPException(status_code=404, detail="File not found")
+    file_size = file_path.stat().st_size
+    if file_size > MAX_TEXT_FILE_SIZE:
+        raise HTTPException(
+            status_code=400,
+            detail=f"File too large ({file_size} bytes). Maximum is {MAX_TEXT_FILE_SIZE} bytes.",
+        )
+    try:
+        content = await asyncio.to_thread(file_path.read_text, encoding="utf-8")
+    except UnicodeDecodeError as exc:
+        raise HTTPException(status_code=400, detail="File is not valid text") from exc
+    return TextContent(content=content)
 
 
 @router.get("/{project_id}/{filename}")

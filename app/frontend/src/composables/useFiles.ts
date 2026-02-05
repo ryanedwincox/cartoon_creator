@@ -1,9 +1,10 @@
+// useFiles: Composable for project file operations (list, read, save, delete). NOT concerned with: file display or UI.
 import { ref } from 'vue'
 
 const API_BASE = '/api'
 const DATA_BASE = '/data'
 
-export type FileType = 'png' | 'svg' | 'json' | 'other'
+export type FileType = 'png' | 'svg' | 'json' | 'txt' | 'other'
 
 export interface FileInfo {
   name: string
@@ -42,6 +43,16 @@ export function useFiles(projectId: string) {
     await loadFiles()
   }
 
+  const getFileText = async (filename: string): Promise<string> => {
+    const res = await fetch(`${API_BASE}/files/${projectId}/${filename}/text`)
+    if (!res.ok) {
+      const detail = await res.text().catch(() => 'unknown')
+      throw new Error(`Failed to read text file (${res.status}): ${detail}`)
+    }
+    const data = await res.json()
+    return data.content
+  }
+
   const deleteFile = async (filename: string) => {
     const res = await fetch(`${API_BASE}/files/${projectId}/${filename}`, {
       method: 'DELETE',
@@ -55,6 +66,7 @@ export function useFiles(projectId: string) {
     loading,
     loadFiles,
     getFileUrl,
+    getFileText,
     saveFile,
     deleteFile,
   }
