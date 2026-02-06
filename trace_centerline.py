@@ -167,7 +167,7 @@ def main():
     output_file = None
     stroke_width = 3.0
     tolerance = 1.5
-    smooth_iterations = 2
+    smooth_iterations = 0  # Smoothing disabled — was causing artifacts
 
     i = 1
     while i < len(args):
