@@ -74,9 +74,6 @@ const handleKeyDown = (e: KeyboardEvent) => {
       case 'b':
         editor.currentTool.value = 'bubble'
         break
-      case 't':
-        editor.currentTool.value = 'thought'
-        break
       case 'delete':
       case 'backspace':
         e.preventDefault()

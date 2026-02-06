@@ -30,13 +30,6 @@ const tools: { id: Tool; label: string; shortcutKey: string; icon: SvgElement[] 
   { id: 'bubble', label: 'Bubble', shortcutKey: 'B', icon: [
     { tag: 'path', attrs: { d: 'M21 15a2 2 0 0 1-2 2H7l-4 4V5a2 2 0 0 1 2-2h14a2 2 0 0 1 2 2z' } },
   ] },
-  { id: 'thought', label: 'Thought', shortcutKey: 'T', icon: [
-    { tag: 'path', attrs: { d: 'M17.5 19a4.5 4.5 0 1 0 0-9 4.5 4.5 0 0 0 0 9Z' } },
-    { tag: 'path', attrs: { d: 'M9.4 14.6a4.5 4.5 0 1 1 3.1-8.4' } },
-    { tag: 'path', attrs: { d: 'M14.8 7a4.5 4.5 0 0 1 6.2 3.1' } },
-    { tag: 'circle', attrs: { cx: 8, cy: 19, r: 1.5, fill: 'currentColor' } },
-    { tag: 'circle', attrs: { cx: 5, cy: 21, r: 1, fill: 'currentColor' } },
-  ] },
 ]
 </script>
 

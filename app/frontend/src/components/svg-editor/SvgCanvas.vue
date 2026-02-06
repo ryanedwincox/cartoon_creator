@@ -57,10 +57,7 @@ const startToolAction = (point: Point) => {
       currentPath.value = [point]
       break
     case 'bubble':
-      editor.addBubble('oval')
-      break
-    case 'thought':
-      editor.addBubble('thought')
+      editor.addBubble()
       break
   }
 }
@@ -226,7 +223,7 @@ const handlePathClick = (id: string, e: MouseEvent) => {
 }
 
 const handleBubbleClick = (id: string, e: MouseEvent) => {
-  if (editor.currentTool.value === 'select' || editor.currentTool.value === 'bubble' || editor.currentTool.value === 'thought') {
+  if (editor.currentTool.value === 'select' || editor.currentTool.value === 'bubble') {
     editor.selectItem(id, e.shiftKey)
   }
 }
@@ -336,56 +333,25 @@ const cursorStyle = computed(() => {
         :class="{ selected: editor.selectedIds.value.has(bubble.id) }"
         @click.stop="handleBubbleClick(bubble.id, $event)"
       >
-        <template v-if="bubble.type === 'oval'">
-          <!-- Tail (behind ellipse) -->
-          <polygon
-            :points="`${bubble.x + bubble.width/2 - 10},${bubble.y + bubble.height * 0.8} ${bubble.x + bubble.width/2 + 10},${bubble.y + bubble.height * 0.8} ${bubble.tailX},${bubble.tailY}`"
-            stroke="black"
-            stroke-width="2"
-            fill="white"
-          />
-          <!-- Ellipse -->
-          <ellipse
-            :cx="bubble.x + bubble.width / 2"
-            :cy="bubble.y + bubble.height / 2"
-            :rx="bubble.width / 2"
-            :ry="bubble.height / 2"
-            stroke="black"
-            stroke-width="2"
-            fill="white"
-          />
-        </template>
-        <template v-else>
-          <!-- Thought bubble -->
-          <rect
-            :x="bubble.x"
-            :y="bubble.y"
-            :width="bubble.width"
-            :height="bubble.height"
-            rx="20"
-            ry="20"
-            stroke="black"
-            stroke-width="2"
-            fill="white"
-          />
-          <!-- Thought circles -->
-          <circle
-            :cx="bubble.x + bubble.width / 2"
-            :cy="bubble.y + bubble.height + 15"
-            r="8"
-            stroke="black"
-            stroke-width="2"
-            fill="white"
-          />
-          <circle
-            :cx="bubble.tailX"
-            :cy="bubble.tailY - 10"
-            r="5"
-            stroke="black"
-            stroke-width="2"
-            fill="white"
-          />
-        </template>
+        <!-- Tail (behind rect so rect covers the base) -->
+        <polygon
+          :points="editor.bubbleTailPoints(bubble)"
+          stroke="black"
+          stroke-width="2"
+          fill="white"
+        />
+        <!-- Rounded rectangle -->
+        <rect
+          :x="bubble.x"
+          :y="bubble.y"
+          :width="bubble.width"
+          :height="bubble.height"
+          rx="20"
+          ry="20"
+          stroke="black"
+          stroke-width="2"
+          fill="white"
+        />
       </g>
     </g>
 
@@ -439,15 +405,13 @@ const cursorStyle = computed(() => {
 }
 
 path.selected,
-g.selected ellipse,
 g.selected rect {
   stroke: #4f46e5;
   stroke-width: 3;
 }
 
 path:hover,
-g:hover ellipse,
-g:hover rect:first-child {
+g:hover rect {
   stroke: #6366f1;
 }
 </style>

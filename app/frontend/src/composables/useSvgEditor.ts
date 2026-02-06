@@ -1,7 +1,7 @@
 // [Composable]: SVG editor state and operations. Responsible for canvas state, path/bubble CRUD, undo/redo, import/export, zoom/pan. NOT concerned with DOM event handling or rendering.
 import { ref, reactive, computed } from 'vue'
 
-export type Tool = 'select' | 'node' | 'draw' | 'erase' | 'bubble' | 'thought'
+export type Tool = 'select' | 'node' | 'draw' | 'erase' | 'bubble'
 export type Layer = 'art' | 'bubbles' | 'text'
 
 export interface Point {
@@ -17,7 +17,6 @@ export interface PathData {
 
 export interface BubbleData {
   id: string
-  type: 'oval' | 'thought'
   x: number
   y: number
   width: number
@@ -120,14 +119,13 @@ export function useSvgEditor() {
     paths.value = paths.value.filter(p => p.id !== id)
   }
 
-  const addBubble = (type: 'oval' | 'thought') => {
+  const addBubble = () => {
     saveState()
     const centerX = (CANVAS_SIZE / 2 - panX.value) / zoom.value
     const centerY = (CANVAS_SIZE / 2 - panY.value) / zoom.value
 
     bubbles.value.push({
       id: generateId(),
-      type,
       x: centerX - 60,
       y: centerY - 40,
       width: 120,
@@ -149,6 +147,14 @@ export function useSvgEditor() {
   const deleteBubble = (id: string) => {
     saveState()
     bubbles.value = bubbles.value.filter(b => b.id !== id)
+  }
+
+  /** SVG points string for a bubble's tail polygon. */
+  const bubbleTailPoints = (bubble: BubbleData): string => {
+    const base1X = bubble.x + bubble.width / 2 - 10
+    const base2X = bubble.x + bubble.width / 2 + 10
+    const baseY = bubble.y + bubble.height * 0.8
+    return `${base1X},${baseY} ${base2X},${baseY} ${bubble.tailX},${bubble.tailY}`
   }
 
   const deleteSelected = () => {
@@ -196,26 +202,8 @@ export function useSvgEditor() {
     // Bubbles layer
     svg += `  <g id="bubbles-layer">\n`
     for (const bubble of bubbleElements) {
-      if (bubble.type === 'oval') {
-        const cx = bubble.x + bubble.width / 2
-        const cy = bubble.y + bubble.height / 2
-        const rx = bubble.width / 2
-        const ry = bubble.height / 2
-        svg += `    <ellipse cx="${cx}" cy="${cy}" rx="${rx}" ry="${ry}" stroke="black" stroke-width="2" fill="white"/>\n`
-        // Tail
-        const tailBase1X = cx - 10
-        const tailBase2X = cx + 10
-        const tailBaseY = cy + ry * 0.8
-        svg += `    <polygon points="${tailBase1X},${tailBaseY} ${tailBase2X},${tailBaseY} ${bubble.tailX},${bubble.tailY}" stroke="black" stroke-width="2" fill="white"/>\n`
-      } else {
-        // Thought bubble - rounded rect with circles
-        svg += `    <rect x="${bubble.x}" y="${bubble.y}" width="${bubble.width}" height="${bubble.height}" rx="20" ry="20" stroke="black" stroke-width="2" fill="white"/>\n`
-        // Thought circles
-        const cx = bubble.x + bubble.width / 2
-        const cy = bubble.y + bubble.height
-        svg += `    <circle cx="${cx}" cy="${cy + 15}" r="8" stroke="black" stroke-width="2" fill="white"/>\n`
-        svg += `    <circle cx="${bubble.tailX}" cy="${bubble.tailY - 10}" r="5" stroke="black" stroke-width="2" fill="white"/>\n`
-      }
+      svg += `    <polygon points="${bubbleTailPoints(bubble)}" stroke="black" stroke-width="2" fill="white"/>\n`
+      svg += `    <rect x="${bubble.x}" y="${bubble.y}" width="${bubble.width}" height="${bubble.height}" rx="20" ry="20" stroke="black" stroke-width="2" fill="white"/>\n`
     }
     svg += `  </g>\n`
 
@@ -316,6 +304,7 @@ export function useSvgEditor() {
     addBubble,
     updateBubble,
     deleteBubble,
+    bubbleTailPoints,
     deleteSelected,
     clearSelection,
     selectItem,
