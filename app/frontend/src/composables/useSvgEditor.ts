@@ -268,6 +268,12 @@ export function useSvgEditor() {
     }
   }
 
+  /** Replace the current selection with the given set of IDs. */
+  const setSelection = (ids: string[]) => {
+    selectedIds.value.clear()
+    for (const id of ids) selectedIds.value.add(id)
+  }
+
   const toggleLayer = (layer: Layer) => {
     layerVisibility[layer] = !layerVisibility[layer]
   }
@@ -433,6 +439,7 @@ export function useSvgEditor() {
     deleteSelected,
     clearSelection,
     selectItem,
+    setSelection,
     toggleLayer,
     exportSvg,
     importSvg,

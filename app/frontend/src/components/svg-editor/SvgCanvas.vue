@@ -21,6 +21,24 @@ const dragStartedOnId = ref<string | null>(null)
 const dragDidMove = ref(false)
 const DRAG_THRESHOLD = 3 // px in screen-space before drag activates
 
+// Marquee selection state
+const isMarqueeActive = ref(false)
+const marqueeStartSvg = ref<Point>({ x: 0, y: 0 })
+const marqueeCurrentSvg = ref<Point>({ x: 0, y: 0 })
+
+const marqueeRect = computed(() => {
+  const x1 = marqueeStartSvg.value.x
+  const y1 = marqueeStartSvg.value.y
+  const x2 = marqueeCurrentSvg.value.x
+  const y2 = marqueeCurrentSvg.value.y
+  return {
+    x: Math.min(x1, x2),
+    y: Math.min(y1, y2),
+    width: Math.abs(x2 - x1),
+    height: Math.abs(y2 - y1),
+  }
+})
+
 // Touch state for pinch zoom and touch pan
 const activeTouchCount = ref(0)
 const initialPinchDistance = ref(0)
@@ -50,6 +68,52 @@ const getCanvasPoint = (e: MouseEvent | Touch): Point | null => {
   return screenToSvg(e.clientX, e.clientY)
 }
 
+interface Rect { x: number; y: number; width: number; height: number }
+
+/** Get bounding box of a rendered SVG element by its data-element-id. */
+const getElementBounds = (id: string): Rect | null => {
+  const el = canvasRef.value?.querySelector(
+    `[data-element-id="${id}"]`,
+  ) as SVGGraphicsElement | null
+  if (!el) return null
+  const bbox = el.getBBox()
+  return { x: bbox.x, y: bbox.y, width: bbox.width, height: bbox.height }
+}
+
+/** Test whether two axis-aligned rectangles intersect. */
+const rectsIntersect = (a: Rect, b: Rect): boolean =>
+  a.x < b.x + b.width && a.x + a.width > b.x
+  && a.y < b.y + b.height && a.y + a.height > b.y
+
+/** Collect IDs of elements whose bounding box intersects the given rectangle. */
+const collectHits = (elements: { id: string }[], rect: Rect): string[] =>
+  elements.filter(el => {
+    const b = getElementBounds(el.id)
+    return b && rectsIntersect(rect, b)
+  }).map(el => el.id)
+
+/** Find all element IDs whose bounding box intersects the given rectangle. */
+const findElementsInRect = (rect: Rect): string[] => [
+  ...(editor.layerVisibility.art ? collectHits(editor.paths.value, rect) : []),
+  ...(editor.layerVisibility.bubbles ? collectHits(editor.bubbles.value, rect) : []),
+  ...(editor.layerVisibility.text ? collectHits(editor.texts.value, rect) : []),
+]
+
+/** Finalize a marquee drag: select intersecting elements or clear selection on small drag. */
+const finalizeMarquee = () => {
+  isMarqueeActive.value = false
+  const dx = marqueeCurrentSvg.value.x - marqueeStartSvg.value.x
+  const dy = marqueeCurrentSvg.value.y - marqueeStartSvg.value.y
+  const svgDist = Math.sqrt(dx * dx + dy * dy)
+
+  // Small drag = click on empty canvas → clear; real drag → select intersecting elements
+  if (svgDist * editor.zoom.value < DRAG_THRESHOLD) {
+    editor.clearSelection()
+  } else {
+    editor.setSelection(findElementsInRect(marqueeRect.value))
+  }
+}
+
 /** Apply zoom change anchored at a screen-space point so that point stays visually fixed. */
 const applyZoomAtScreenPoint = (newZoom: number, screenX: number, screenY: number) => {
   const svgPoint = screenToSvg(screenX, screenY)
@@ -71,7 +135,9 @@ const startToolAction = (point: Point | null) => {
 
   switch (editor.currentTool.value) {
     case 'select':
-      editor.clearSelection()
+      isMarqueeActive.value = true
+      marqueeStartSvg.value = { ...point }
+      marqueeCurrentSvg.value = { ...point }
       break
     case 'draw':
       isDrawing.value = true
@@ -116,6 +182,12 @@ const handleMouseMove = (e: MouseEvent) => {
     return
   }
 
+  if (isMarqueeActive.value) {
+    const svgPt = getCanvasPoint(e)
+    if (svgPt) marqueeCurrentSvg.value = { ...svgPt }
+    return
+  }
+
   if (isDrawing.value && editor.currentTool.value === 'draw') {
     const point = getCanvasPoint(e)
     if (point) currentPath.value.push(point)
@@ -140,6 +212,11 @@ const handleMouseUp = (e: MouseEvent) => {
     isDragging.value = false
     dragStartedOnId.value = null
     dragDidMove.value = false
+    return
+  }
+
+  if (isMarqueeActive.value) {
+    finalizeMarquee()
     return
   }
 
@@ -177,9 +254,10 @@ const handleTouchStart = (e: TouchEvent) => {
     const t0 = e.touches[0]!
     const t1 = e.touches[1]!
 
-    // Two-finger gesture: pinch zoom + pan — cancel any in-progress drawing
+    // Two-finger gesture: pinch zoom + pan — cancel any in-progress drawing/marquee
     isDrawing.value = false
     currentPath.value = []
+    isMarqueeActive.value = false
     isPanning.value = true
 
     initialPinchDistance.value = getTouchDistance(t0, t1)
@@ -226,6 +304,12 @@ const handleTouchMove = (e: TouchEvent) => {
     return
   }
 
+  if (e.touches.length === 1 && isMarqueeActive.value) {
+    const svgPt = getCanvasPoint(e.touches[0]!)
+    if (svgPt) marqueeCurrentSvg.value = { ...svgPt }
+    return
+  }
+
   if (e.touches.length === 1 && isDrawing.value && editor.currentTool.value === 'draw') {
     const point = getCanvasPoint(e.touches[0]!)
     if (point) currentPath.value.push(point)
@@ -248,6 +332,13 @@ const handleTouchEnd = (e: TouchEvent) => {
     isDragging.value = false
     dragStartedOnId.value = null
     dragDidMove.value = false
+    isPanning.value = false
+    activeTouchCount.value = e.touches.length
+    return
+  }
+
+  if (isMarqueeActive.value) {
+    finalizeMarquee()
     isPanning.value = false
     activeTouchCount.value = e.touches.length
     return
@@ -425,6 +516,7 @@ const textInputWidth = (textItem: { content: string; fontSize: number }): number
 const cursorStyle = computed(() => {
   if (isPanning.value || isSpacePressed.value) return 'grabbing'
   if (isDragging.value && dragDidMove.value) return 'grabbing'
+  if (isMarqueeActive.value) return 'crosshair'
   switch (editor.currentTool.value) {
     case 'draw': return 'crosshair'
     case 'erase': return 'pointer'
@@ -475,6 +567,7 @@ const cursorStyle = computed(() => {
       <path
         v-for="path in editor.paths.value"
         :key="path.id"
+        :data-element-id="path.id"
         :d="path.d"
         stroke="black"
         stroke-width="2"
@@ -493,6 +586,7 @@ const cursorStyle = computed(() => {
       <g
         v-for="bubble in editor.bubbles.value"
         :key="bubble.id"
+        :data-element-id="bubble.id"
         :class="{ selected: editor.selectedIds.value.has(bubble.id) }"
         @click.stop="handleBubbleClick(bubble.id, $event)"
         @mousedown="handleElementMouseDown(bubble.id, $event)"
@@ -541,6 +635,7 @@ const cursorStyle = computed(() => {
       <g
         v-for="textItem in editor.texts.value"
         :key="textItem.id"
+        :data-element-id="textItem.id"
         :class="{ selected: editor.selectedIds.value.has(textItem.id) }"
       >
         <text
@@ -595,14 +690,16 @@ const cursorStyle = computed(() => {
       opacity="0.5"
     />
 
-    <!-- Selection indicators -->
-    <g class="selection-indicators">
-      <rect
-        v-for="id in editor.selectedIds.value"
-        :key="'sel-' + id"
-        class="selection-box"
-      />
-    </g>
+    <!-- Marquee selection rectangle -->
+    <rect
+      v-if="isMarqueeActive && marqueeRect.width > 0 && marqueeRect.height > 0"
+      :x="marqueeRect.x"
+      :y="marqueeRect.y"
+      :width="marqueeRect.width"
+      :height="marqueeRect.height"
+      class="marquee-rect"
+      pointer-events="none"
+    />
   </svg>
 </template>
 
@@ -631,6 +728,13 @@ g.selected > text {
 path:hover,
 g:hover rect {
   stroke: #6366f1;
+}
+
+.marquee-rect {
+  fill: rgba(79, 70, 229, 0.1);
+  stroke: #4f46e5;
+  stroke-width: 1;
+  stroke-dasharray: 4 2;
 }
 
 .text-inline-input {
