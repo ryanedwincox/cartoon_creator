@@ -1,6 +1,6 @@
 <!-- FilesPanel: Displays project file list with icons, sizes, and click-to-open. -->
 <script setup lang="ts">
-import { computed, onMounted } from 'vue'
+import { computed, onMounted, ref } from 'vue'
 import { useFiles, type FileType } from '../composables/useFiles'
 
 const props = defineProps<{
@@ -11,7 +11,10 @@ const emit = defineEmits<{
   'file-click': [filename: string, type: FileType, mtime: number]
 }>()
 
-const { files, loading, loadFiles } = useFiles(props.projectId)
+const { files, loading, uploading, loadFiles, uploadFile } = useFiles(props.projectId)
+
+const fileInput = ref<HTMLInputElement | null>(null)
+const uploadError = ref<string>()
 
 const visibleFiles = computed(() => files.value.filter((f) => !f.is_hidden))
 
@@ -34,10 +37,43 @@ const formatSize = (bytes: number): string => {
   if (bytes < 1024 * 1024) return `${(bytes / 1024).toFixed(1)} KB`
   return `${(bytes / (1024 * 1024)).toFixed(1)} MB`
 }
+
+const handleFileChange = async (event: Event) => {
+  const input = event.target as HTMLInputElement
+  const file = input.files?.[0]
+  if (!file) return
+
+  uploadError.value = undefined
+  try {
+    await uploadFile(file)
+  } catch (e) {
+    uploadError.value = e instanceof Error ? e.message : 'Upload failed'
+  } finally {
+    input.value = ''
+  }
+}
 </script>
 
 <template>
   <div class="files-panel">
+    <div class="files-header">
+      <input
+        ref="fileInput"
+        type="file"
+        class="file-input-hidden"
+        @change="handleFileChange"
+      />
+      <button
+        class="btn btn-secondary btn-sm"
+        :disabled="uploading"
+        @click="fileInput?.click()"
+      >
+        {{ uploading ? 'Uploading...' : 'Upload File' }}
+      </button>
+    </div>
+
+    <div v-if="uploadError" class="upload-error">{{ uploadError }}</div>
+
     <div v-if="loading" class="loading">Loading files...</div>
 
     <div v-else-if="visibleFiles.length === 0" class="empty">
@@ -68,6 +104,32 @@ const formatSize = (bytes: number): string => {
 <style scoped>
 .files-panel {
   padding: 1rem;
+}
+
+.files-header {
+  display: flex;
+  justify-content: flex-end;
+  padding-bottom: 0.75rem;
+  border-bottom: 1px solid var(--border);
+  margin-bottom: 0.75rem;
+}
+
+.file-input-hidden {
+  display: none;
+}
+
+.btn-sm {
+  padding: 0.25rem 0.75rem;
+  font-size: 0.75rem;
+}
+
+.upload-error {
+  color: #991b1b;
+  background: #fee2e2;
+  padding: 0.5rem 0.75rem;
+  border-radius: 0.5rem;
+  font-size: 0.8rem;
+  margin-bottom: 0.75rem;
 }
 
 .loading,

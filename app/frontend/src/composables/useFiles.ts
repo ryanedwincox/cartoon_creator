@@ -17,6 +17,7 @@ export interface FileInfo {
 export function useFiles(projectId: string) {
   const files = ref<FileInfo[]>([])
   const loading = ref(false)
+  const uploading = ref(false)
 
   const loadFiles = async () => {
     loading.value = true
@@ -63,13 +64,31 @@ export function useFiles(projectId: string) {
     await loadFiles()
   }
 
+  const uploadFile = async (file: File) => {
+    uploading.value = true
+    try {
+      const formData = new FormData()
+      formData.append('file', file)
+      const res = await fetch(`${API_BASE}/files/${projectId}/${file.name}`, {
+        method: 'POST',
+        body: formData,
+      })
+      if (!res.ok) throw new Error('Failed to upload file')
+      await loadFiles()
+    } finally {
+      uploading.value = false
+    }
+  }
+
   return {
     files,
     loading,
+    uploading,
     loadFiles,
     getFileUrl,
     getFileText,
     saveFile,
     deleteFile,
+    uploadFile,
   }
 }
