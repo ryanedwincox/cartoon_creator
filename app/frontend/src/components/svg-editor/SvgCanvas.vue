@@ -25,22 +25,29 @@ const viewBox = computed(() => {
   return `${x} ${y} ${size} ${size}`
 })
 
-const getCanvasPoint = (e: MouseEvent | Touch): Point => {
-  if (!canvasRef.value) return { x: 0, y: 0 }
+/** Convert screen-space coordinates to SVG viewBox coordinates via the current CTM. */
+const screenToSvg = (screenX: number, screenY: number): Point | null => {
+  const ctm = canvasRef.value?.getScreenCTM()
+  if (!ctm) return null
 
-  const rect = canvasRef.value.getBoundingClientRect()
-  const x = (e.clientX - rect.left) / rect.width * editor.CANVAS_SIZE / editor.zoom.value - editor.panX.value / editor.zoom.value
-  const y = (e.clientY - rect.top) / rect.height * editor.CANVAS_SIZE / editor.zoom.value - editor.panY.value / editor.zoom.value
+  const inverse = ctm.inverse()
+  return {
+    x: inverse.a * screenX + inverse.c * screenY + inverse.e,
+    y: inverse.b * screenX + inverse.d * screenY + inverse.f,
+  }
+}
 
-  return { x, y }
+const getCanvasPoint = (e: MouseEvent | Touch): Point | null => {
+  return screenToSvg(e.clientX, e.clientY)
 }
 
 /** Apply zoom change anchored at a screen-space point so that point stays visually fixed. */
 const applyZoomAtScreenPoint = (newZoom: number, screenX: number, screenY: number) => {
-  const rect = canvasRef.value?.getBoundingClientRect()
-  if (rect) {
-    const cx = (screenX - rect.left) / rect.width * editor.CANVAS_SIZE
-    const cy = (screenY - rect.top) / rect.height * editor.CANVAS_SIZE
+  const svgPoint = screenToSvg(screenX, screenY)
+  if (svgPoint) {
+    // Convert SVG viewBox coords to viewport-unit coords (pan-zoom space)
+    const cx = svgPoint.x * editor.zoom.value + editor.panX.value
+    const cy = svgPoint.y * editor.zoom.value + editor.panY.value
 
     const scale = newZoom / editor.zoom.value
     editor.panX.value = cx - (cx - editor.panX.value) * scale
@@ -50,7 +57,9 @@ const applyZoomAtScreenPoint = (newZoom: number, screenX: number, screenY: numbe
 }
 
 /** Begin tool action at a canvas point. Shared by mouse and touch start handlers. */
-const startToolAction = (point: Point) => {
+const startToolAction = (point: Point | null) => {
+  if (!point) return
+
   switch (editor.currentTool.value) {
     case 'draw':
       isDrawing.value = true
@@ -85,7 +94,7 @@ const handleMouseMove = (e: MouseEvent) => {
 
   if (isDrawing.value && editor.currentTool.value === 'draw') {
     const point = getCanvasPoint(e)
-    currentPath.value.push(point)
+    if (point) currentPath.value.push(point)
   }
 }
 
@@ -173,7 +182,7 @@ const handleTouchMove = (e: TouchEvent) => {
 
   if (e.touches.length === 1 && isDrawing.value && editor.currentTool.value === 'draw') {
     const point = getCanvasPoint(e.touches[0]!)
-    currentPath.value.push(point)
+    if (point) currentPath.value.push(point)
   }
 }
 
