@@ -1,4 +1,4 @@
-<!-- [Component]: SVG editor modal shell. Responsible for loading/saving SVG files, providing editor instance via inject, and keyboard shortcut routing. NOT concerned with canvas rendering or drawing logic. -->
+<!-- [Component]: SVG editor modal shell. Responsible for loading SVG files, autosaving periodically and on close, providing editor instance via inject, and keyboard shortcut routing. NOT concerned with canvas rendering or drawing logic. -->
 <script setup lang="ts">
 import { ref, onMounted, onUnmounted, provide } from 'vue'
 import { useSvgEditor } from '../../composables/useSvgEditor'
@@ -17,31 +17,65 @@ const emit = defineEmits<{
 
 const API_BASE = '/api'
 const DATA_BASE = '/data'
+const AUTOSAVE_INTERVAL_MS = 30_000
 
 const editor = useSvgEditor()
 provide('svgEditor', editor)
 
-const saving = ref(false)
+const saveStatus = ref<'idle' | 'saving' | 'saved' | 'error'>('idle')
+let saveStatusTimer: ReturnType<typeof setTimeout> | undefined
+let autosaveTimer: ReturnType<typeof setInterval> | undefined
+let saving = false
 
-onMounted(async () => {
-  // Load SVG content
+const persistSvg = async (): Promise<boolean> => {
+  if (!editor.isDirty.value || saving) return true
+  saving = true
+
+  saveStatus.value = 'saving'
   try {
-    const res = await fetch(`${DATA_BASE}/${props.projectId}/${props.filename}`)
-    if (res.ok) {
-      const svgContent = await res.text()
-      editor.importSvg(svgContent)
-    }
+    const svgContent = editor.exportSvg()
+    const res = await fetch(`${API_BASE}/files/${props.projectId}/${props.filename}`, {
+      method: 'PUT',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({ content: svgContent }),
+    })
+    if (!res.ok) throw new Error('Failed to save')
+    editor.markSaved()
+    saveStatus.value = 'saved'
+    clearTimeout(saveStatusTimer)
+    saveStatusTimer = setTimeout(() => { saveStatus.value = 'idle' }, 2000)
+    return true
   } catch (e) {
-    console.error('Failed to load SVG:', e)
+    console.error('Failed to save SVG:', e)
+    saveStatus.value = 'error'
+    return false
+  } finally {
+    saving = false
   }
+}
 
-  // Setup keyboard shortcuts
-  window.addEventListener('keydown', handleKeyDown)
-})
+const handleClose = async () => {
+  const saved = await persistSvg()
+  if (!saved && editor.isDirty.value) {
+    // Save failed — still close since autosave will have captured recent state
+    // and blocking the user on transient network errors is worse UX
+    saveStatus.value = 'error'
+  }
+  emit('close')
+}
 
-onUnmounted(() => {
-  window.removeEventListener('keydown', handleKeyDown)
-})
+// beforeunload uses fire-and-forget fetch because the browser does not allow
+// async work in this handler; keepalive ensures the request outlives the page.
+const handleBeforeUnload = () => {
+  if (!editor.isDirty.value) return
+  const svgContent = editor.exportSvg()
+  fetch(`${API_BASE}/files/${props.projectId}/${props.filename}`, {
+    method: 'PUT',
+    headers: { 'Content-Type': 'application/json' },
+    body: JSON.stringify({ content: svgContent }),
+    keepalive: true,
+  }).catch(() => { /* best-effort — browser lifecycle constraint */ })
+}
 
 const handleKeyDown = (e: KeyboardEvent) => {
   // Don't handle if typing in input
@@ -90,23 +124,32 @@ const handleKeyDown = (e: KeyboardEvent) => {
   }
 }
 
-const handleSave = async () => {
-  saving.value = true
+onMounted(async () => {
+  // Load SVG content
   try {
-    const svgContent = editor.exportSvg()
-    const res = await fetch(`${API_BASE}/files/${props.projectId}/${props.filename}`, {
-      method: 'PUT',
-      headers: { 'Content-Type': 'application/json' },
-      body: JSON.stringify({ content: svgContent }),
-    })
-    if (!res.ok) throw new Error('Failed to save')
+    const res = await fetch(`${DATA_BASE}/${props.projectId}/${props.filename}`)
+    if (res.ok) {
+      const svgContent = await res.text()
+      editor.importSvg(svgContent)
+      editor.markSaved()
+    }
   } catch (e) {
-    console.error('Failed to save SVG:', e)
-    alert('Failed to save SVG')
-  } finally {
-    saving.value = false
+    console.error('Failed to load SVG:', e)
   }
-}
+
+  // Periodic autosave — guarded by `saving` flag inside persistSvg to prevent overlap
+  autosaveTimer = setInterval(async () => { await persistSvg() }, AUTOSAVE_INTERVAL_MS)
+
+  window.addEventListener('keydown', handleKeyDown)
+  window.addEventListener('beforeunload', handleBeforeUnload)
+})
+
+onUnmounted(() => {
+  clearInterval(autosaveTimer)
+  clearTimeout(saveStatusTimer)
+  window.removeEventListener('keydown', handleKeyDown)
+  window.removeEventListener('beforeunload', handleBeforeUnload)
+})
 </script>
 
 <template>
@@ -118,6 +161,9 @@ const handleSave = async () => {
         <span class="filename">{{ filename }}</span>
       </div>
       <div class="header-right">
+        <span v-if="saveStatus === 'saving'" class="save-indicator saving">Saving…</span>
+        <span v-else-if="saveStatus === 'saved'" class="save-indicator saved">Saved</span>
+        <span v-else-if="saveStatus === 'error'" class="save-indicator error">Save failed</span>
         <button class="btn btn-secondary" @click="editor.undo()" :disabled="!editor.canUndo.value">
           <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2">
             <path d="M3 10h10a5 5 0 0 1 5 5v2M3 10l4-4M3 10l4 4" />
@@ -128,10 +174,7 @@ const handleSave = async () => {
             <path d="M21 10H11a5 5 0 0 0-5 5v2M21 10l-4-4M21 10l-4 4" />
           </svg>
         </button>
-        <button id="save-btn" class="btn btn-primary" @click="handleSave" :disabled="saving">
-          {{ saving ? 'Saving...' : 'Save' }}
-        </button>
-        <button class="btn btn-secondary close-btn" @click="emit('close')">
+        <button class="btn btn-secondary close-btn" @click="handleClose">
           <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2">
             <path d="M18 6L6 18M6 6l12 12" />
           </svg>
@@ -203,8 +246,23 @@ const handleSave = async () => {
   height: 1.25rem;
 }
 
-.header-right .btn-primary {
-  padding: 0.5rem 1rem;
+.save-indicator {
+  font-size: 0.75rem;
+  padding: 0.25rem 0.5rem;
+  border-radius: 4px;
+  white-space: nowrap;
+}
+
+.save-indicator.saving {
+  color: var(--text-muted);
+}
+
+.save-indicator.saved {
+  color: #16a34a;
+}
+
+.save-indicator.error {
+  color: var(--error);
 }
 
 .close-btn svg {

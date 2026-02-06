@@ -72,6 +72,10 @@ export function useSvgEditor() {
   const undoStack = ref<UndoState[]>([])
   const redoStack = ref<UndoState[]>([])
 
+  const version = ref(0)
+  const lastSavedVersion = ref(0)
+  const isDirty = computed(() => version.value !== lastSavedVersion.value)
+
   const zoom = ref(1)
   const panX = ref(0)
   const panY = ref(0)
@@ -89,6 +93,7 @@ export function useSvgEditor() {
     if (undoStack.value.length > 50) {
       undoStack.value.shift()
     }
+    version.value++
   }
 
   const undo = () => {
@@ -105,6 +110,7 @@ export function useSvgEditor() {
     bubbles.value = state.bubbles
     texts.value = state.texts
     selectedIds.value.clear()
+    version.value++
   }
 
   const redo = () => {
@@ -121,6 +127,7 @@ export function useSvgEditor() {
     bubbles.value = state.bubbles
     texts.value = state.texts
     selectedIds.value.clear()
+    version.value++
   }
 
   const generateId = () => `${Date.now()}-${Math.random().toString(36).slice(2, 8)}`
@@ -400,6 +407,10 @@ export function useSvgEditor() {
     panY.value = offsetY * zoom.value
   }
 
+  const markSaved = () => {
+    lastSavedVersion.value = version.value
+  }
+
   const canUndo = computed(() => undoStack.value.length > 0)
   const canRedo = computed(() => redoStack.value.length > 0)
 
@@ -420,6 +431,10 @@ export function useSvgEditor() {
     panY,
     sourceWidth,
     sourceHeight,
+
+    // Dirty tracking
+    isDirty,
+    markSaved,
 
     // Actions
     saveState,
