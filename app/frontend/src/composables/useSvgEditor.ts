@@ -1,7 +1,7 @@
-// [Composable]: SVG editor state and operations. Responsible for canvas state, path/bubble CRUD, undo/redo, import/export, zoom/pan. NOT concerned with DOM event handling or rendering.
+// [Composable]: SVG editor state and operations. Responsible for canvas state, path/bubble/text CRUD, undo/redo, import/export, zoom/pan. NOT concerned with DOM event handling or rendering.
 import { ref, reactive, computed } from 'vue'
 
-export type Tool = 'select' | 'node' | 'draw' | 'erase' | 'bubble'
+export type Tool = 'select' | 'node' | 'draw' | 'erase' | 'bubble' | 'text'
 export type Layer = 'art' | 'bubbles' | 'text'
 
 export interface Point {
@@ -27,15 +27,27 @@ export interface BubbleData {
   layer: 'bubbles'
 }
 
+export interface TextData {
+  id: string
+  x: number
+  y: number
+  content: string
+  fontSize: number
+  layer: 'text'
+}
+
 export interface UndoState {
   paths: PathData[]
   bubbles: BubbleData[]
+  texts: TextData[]
 }
 
 const CANVAS_SIZE = 500
 const MIN_ZOOM = 0.25
 const MAX_ZOOM = 4
 const FIT_VIEW_FILL_RATIO = 0.9
+const DEFAULT_FONT_SIZE = 14
+const DEFAULT_FONT_FAMILY = 'Comic Sans MS, cursive'
 
 export function useSvgEditor() {
   const currentTool = ref<Tool>('select')
@@ -49,10 +61,12 @@ export function useSvgEditor() {
 
   const paths = ref<PathData[]>([])
   const bubbles = ref<BubbleData[]>([])
+  const texts = ref<TextData[]>([])
 
   const selectedIds = ref<Set<string>>(new Set())
   const editingNodePath = ref<string | null>(null)
   const editingTextBubble = ref<string | null>(null)
+  const editingTextId = ref<string | null>(null)
 
   const undoStack = ref<UndoState[]>([])
   const redoStack = ref<UndoState[]>([])
@@ -68,6 +82,7 @@ export function useSvgEditor() {
     undoStack.value.push({
       paths: JSON.parse(JSON.stringify(paths.value)),
       bubbles: JSON.parse(JSON.stringify(bubbles.value)),
+      texts: JSON.parse(JSON.stringify(texts.value)),
     })
     redoStack.value = []
     if (undoStack.value.length > 50) {
@@ -81,11 +96,13 @@ export function useSvgEditor() {
     redoStack.value.push({
       paths: JSON.parse(JSON.stringify(paths.value)),
       bubbles: JSON.parse(JSON.stringify(bubbles.value)),
+      texts: JSON.parse(JSON.stringify(texts.value)),
     })
 
     const state = undoStack.value.pop()!
     paths.value = state.paths
     bubbles.value = state.bubbles
+    texts.value = state.texts
     selectedIds.value.clear()
   }
 
@@ -95,11 +112,13 @@ export function useSvgEditor() {
     undoStack.value.push({
       paths: JSON.parse(JSON.stringify(paths.value)),
       bubbles: JSON.parse(JSON.stringify(bubbles.value)),
+      texts: JSON.parse(JSON.stringify(texts.value)),
     })
 
     const state = redoStack.value.pop()!
     paths.value = state.paths
     bubbles.value = state.bubbles
+    texts.value = state.texts
     selectedIds.value.clear()
   }
 
@@ -149,6 +168,47 @@ export function useSvgEditor() {
     bubbles.value = bubbles.value.filter(b => b.id !== id)
   }
 
+  const addText = (svgX: number, svgY: number) => {
+    saveState()
+    const id = generateId()
+    texts.value.push({
+      id,
+      x: svgX,
+      y: svgY,
+      content: '',
+      fontSize: DEFAULT_FONT_SIZE,
+      layer: 'text',
+    })
+    editingTextId.value = id
+  }
+
+  const updateText = (id: string, updates: Partial<TextData>) => {
+    const idx = texts.value.findIndex(t => t.id === id)
+    if (idx >= 0) {
+      texts.value[idx] = { ...texts.value[idx]!, ...updates } as TextData
+    }
+  }
+
+  const deleteText = (id: string) => {
+    saveState()
+    texts.value = texts.value.filter(t => t.id !== id)
+  }
+
+  const commitTextEdit = () => {
+    const id = editingTextId.value
+    if (!id) return
+
+    const textItem = texts.value.find(t => t.id === id)
+    if (textItem && !textItem.content.trim()) {
+      // Remove empty text elements without saving extra undo state (addText already saved)
+      texts.value = texts.value.filter(t => t.id !== id)
+    } else if (textItem) {
+      // Save state so typed text is captured in undo history
+      saveState()
+    }
+    editingTextId.value = null
+  }
+
   /** SVG points string for a bubble's tail polygon. */
   const bubbleTailPoints = (bubble: BubbleData): string => {
     const base1X = bubble.x + bubble.width / 2 - 10
@@ -163,12 +223,14 @@ export function useSvgEditor() {
     saveState()
     paths.value = paths.value.filter(p => !selectedIds.value.has(p.id))
     bubbles.value = bubbles.value.filter(b => !selectedIds.value.has(b.id))
+    texts.value = texts.value.filter(t => !selectedIds.value.has(t.id))
     selectedIds.value.clear()
   }
 
   const clearSelection = () => {
     selectedIds.value.clear()
     editingNodePath.value = null
+    commitTextEdit()
   }
 
   const selectItem = (id: string, addToSelection = false) => {
@@ -213,7 +275,12 @@ export function useSvgEditor() {
       if (bubble.text) {
         const cx = bubble.x + bubble.width / 2
         const cy = bubble.y + bubble.height / 2
-        svg += `    <text x="${cx}" y="${cy}" text-anchor="middle" dominant-baseline="middle" font-family="Comic Sans MS, cursive" font-size="14">${escapeXml(bubble.text)}</text>\n`
+        svg += `    <text x="${cx}" y="${cy}" text-anchor="middle" dominant-baseline="middle" font-family="${DEFAULT_FONT_FAMILY}" font-size="${DEFAULT_FONT_SIZE}">${escapeXml(bubble.text)}</text>\n`
+      }
+    }
+    for (const textItem of texts.value) {
+      if (textItem.content) {
+        svg += `    <text x="${textItem.x}" y="${textItem.y}" font-family="${DEFAULT_FONT_FAMILY}" font-size="${textItem.fontSize}" data-standalone="true">${escapeXml(textItem.content)}</text>\n`
       }
     }
     svg += `  </g>\n`
@@ -226,6 +293,7 @@ export function useSvgEditor() {
     saveState()
     paths.value = []
     bubbles.value = []
+    texts.value = []
 
     const parser = new DOMParser()
     const doc = parser.parseFromString(svgContent, 'image/svg+xml')
@@ -242,6 +310,32 @@ export function useSvgEditor() {
           d,
           layer: 'art',
         })
+      }
+    }
+
+    // Import standalone text elements from text-layer (exclude bubble text identified by centered alignment)
+    const textLayer = doc.getElementById('text-layer')
+    if (textLayer) {
+      const textElements = textLayer.querySelectorAll('text')
+      for (const textEl of textElements) {
+        const isBubbleText = textEl.getAttribute('text-anchor') === 'middle'
+          && textEl.getAttribute('dominant-baseline') === 'middle'
+        if (isBubbleText) continue
+
+        const x = parseFloat(textEl.getAttribute('x') || '0')
+        const y = parseFloat(textEl.getAttribute('y') || '0')
+        const fontSize = parseFloat(textEl.getAttribute('font-size') || String(DEFAULT_FONT_SIZE))
+        const content = textEl.textContent || ''
+        if (content) {
+          texts.value.push({
+            id: generateId(),
+            x,
+            y,
+            content,
+            fontSize,
+            layer: 'text',
+          })
+        }
       }
     }
 
@@ -286,9 +380,11 @@ export function useSvgEditor() {
     layerVisibility,
     paths,
     bubbles,
+    texts,
     selectedIds,
     editingNodePath,
     editingTextBubble,
+    editingTextId,
     zoom,
     panX,
     panY,
@@ -304,6 +400,10 @@ export function useSvgEditor() {
     addBubble,
     updateBubble,
     deleteBubble,
+    addText,
+    updateText,
+    deleteText,
+    commitTextEdit,
     bubbleTailPoints,
     deleteSelected,
     clearSelection,
@@ -321,6 +421,8 @@ export function useSvgEditor() {
     CANVAS_SIZE,
     MIN_ZOOM,
     MAX_ZOOM,
+    DEFAULT_FONT_SIZE,
+    DEFAULT_FONT_FAMILY,
   }
 }
 

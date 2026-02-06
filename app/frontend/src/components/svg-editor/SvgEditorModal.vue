@@ -1,3 +1,4 @@
+<!-- [Component]: SVG editor modal shell. Responsible for loading/saving SVG files, providing editor instance via inject, and keyboard shortcut routing. NOT concerned with canvas rendering or drawing logic. -->
 <script setup lang="ts">
 import { ref, onMounted, onUnmounted, provide } from 'vue'
 import { useSvgEditor } from '../../composables/useSvgEditor'
@@ -73,6 +74,9 @@ const handleKeyDown = (e: KeyboardEvent) => {
         break
       case 'b':
         editor.currentTool.value = 'bubble'
+        break
+      case 't':
+        editor.currentTool.value = 'text'
         break
       case 'delete':
       case 'backspace':

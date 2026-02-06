@@ -1,11 +1,12 @@
 <!-- [Component]: Interactive SVG drawing canvas. Responsible for mouse/keyboard event handling, viewport pan/zoom, and rendering editor state. NOT concerned with data persistence or editor business logic. -->
 <script setup lang="ts">
-import { ref, inject, computed, onMounted, onUnmounted } from 'vue'
+import { ref, inject, computed, onMounted, onUnmounted, nextTick, watch } from 'vue'
 import type { Point } from '../../composables/useSvgEditor'
 
 const editor = inject('svgEditor') as ReturnType<typeof import('../../composables/useSvgEditor').useSvgEditor>
 
 const canvasRef = ref<SVGSVGElement | null>(null)
+const textInputRef = ref<HTMLInputElement | null>(null)
 const isDrawing = ref(false)
 const currentPath = ref<Point[]>([])
 const isPanning = ref(false)
@@ -67,6 +68,11 @@ const startToolAction = (point: Point | null) => {
       break
     case 'bubble':
       editor.addBubble()
+      break
+    case 'text':
+      editor.commitTextEdit()
+      editor.addText(point.x, point.y)
+      nextTick(() => textInputRef.value?.focus())
       break
   }
 }
@@ -237,6 +243,39 @@ const handleBubbleClick = (id: string, e: MouseEvent) => {
   }
 }
 
+const handleTextClick = (id: string, e: MouseEvent) => {
+  if (editor.currentTool.value === 'select' || editor.currentTool.value === 'text') {
+    editor.selectItem(id, e.shiftKey)
+  } else if (editor.currentTool.value === 'erase') {
+    editor.deleteText(id)
+  }
+}
+
+const handleTextDblClick = (id: string) => {
+  editor.editingTextId.value = id
+  nextTick(() => textInputRef.value?.focus())
+}
+
+const handleTextInput = (e: Event) => {
+  const id = editor.editingTextId.value
+  if (!id) return
+  editor.updateText(id, { content: (e.target as HTMLInputElement).value })
+}
+
+const handleTextInputKeydown = (e: KeyboardEvent) => {
+  if (e.key === 'Enter' || e.key === 'Escape') {
+    e.preventDefault()
+    editor.commitTextEdit()
+  }
+  // Stop propagation so editor keyboard shortcuts don't fire while typing
+  e.stopPropagation()
+}
+
+// Commit text edit when switching tools
+watch(editor.currentTool, () => {
+  editor.commitTextEdit()
+})
+
 onMounted(() => {
   window.addEventListener('keydown', handleKeyDown)
   window.addEventListener('keyup', handleKeyUp)
@@ -277,11 +316,22 @@ function pointsToPath(points: Point[]): string {
 
 const currentPathD = computed(() => pointsToPath(currentPath.value))
 
+/** Compute a reasonable foreignObject width in SVG coordinates for text editing. */
+const TEXT_INPUT_MIN_WIDTH = 120
+const TEXT_INPUT_CHAR_WIDTH_FACTOR = 0.65
+const TEXT_INPUT_PADDING = 20
+
+const textInputWidth = (textItem: { content: string; fontSize: number }): number => {
+  const contentWidth = Math.max(textItem.content.length, 8) * textItem.fontSize * TEXT_INPUT_CHAR_WIDTH_FACTOR + TEXT_INPUT_PADDING
+  return Math.max(TEXT_INPUT_MIN_WIDTH, contentWidth)
+}
+
 const cursorStyle = computed(() => {
   if (isPanning.value || isSpacePressed.value) return 'grabbing'
   switch (editor.currentTool.value) {
     case 'draw': return 'crosshair'
     case 'erase': return 'pointer'
+    case 'text': return 'text'
     default: return 'default'
   }
 })
@@ -371,6 +421,7 @@ const cursorStyle = computed(() => {
 
     <!-- Text layer -->
     <g v-show="editor.layerVisibility.text" id="text-layer">
+      <!-- Bubble text -->
       <text
         v-for="bubble in editor.bubbles.value"
         :key="'text-' + bubble.id"
@@ -378,12 +429,55 @@ const cursorStyle = computed(() => {
         :y="bubble.y + bubble.height / 2"
         text-anchor="middle"
         dominant-baseline="middle"
-        font-family="Comic Sans MS, cursive"
-        font-size="14"
+        :font-family="editor.DEFAULT_FONT_FAMILY"
+        :font-size="editor.DEFAULT_FONT_SIZE"
         fill="black"
       >
         {{ bubble.text }}
       </text>
+
+      <!-- Standalone text elements -->
+      <g
+        v-for="textItem in editor.texts.value"
+        :key="textItem.id"
+        :class="{ selected: editor.selectedIds.value.has(textItem.id) }"
+      >
+        <text
+          v-if="editor.editingTextId.value !== textItem.id"
+          :x="textItem.x"
+          :y="textItem.y"
+          :font-family="editor.DEFAULT_FONT_FAMILY"
+          :font-size="textItem.fontSize"
+          fill="black"
+          @click.stop="handleTextClick(textItem.id, $event)"
+          @dblclick.stop="handleTextDblClick(textItem.id)"
+        >
+          {{ textItem.content }}
+        </text>
+
+        <!-- Inline editing via foreignObject -->
+        <foreignObject
+          v-if="editor.editingTextId.value === textItem.id"
+          :x="textItem.x"
+          :y="textItem.y - textItem.fontSize"
+          :width="textInputWidth(textItem)"
+          :height="textItem.fontSize + 8"
+        >
+          <input
+            ref="textInputRef"
+            :value="textItem.content"
+            class="text-inline-input"
+            :style="{
+              fontSize: textItem.fontSize + 'px',
+              fontFamily: editor.DEFAULT_FONT_FAMILY,
+            }"
+            @input="handleTextInput"
+            @keydown="handleTextInputKeydown"
+            @blur="editor.commitTextEdit()"
+            @mousedown.stop
+          />
+        </foreignObject>
+      </g>
     </g>
 
     <!-- Current drawing path -->
@@ -419,13 +513,29 @@ const cursorStyle = computed(() => {
 }
 
 path.selected,
-g.selected rect {
+g.selected rect,
+g.selected text {
   stroke: #4f46e5;
   stroke-width: 3;
+}
+
+g.selected > text {
+  stroke: none;
+  fill: #4f46e5;
 }
 
 path:hover,
 g:hover rect {
   stroke: #6366f1;
+}
+
+.text-inline-input {
+  width: 100%;
+  height: 100%;
+  border: 1px solid #4f46e5;
+  background: white;
+  outline: none;
+  padding: 0 2px;
+  box-sizing: border-box;
 }
 </style>

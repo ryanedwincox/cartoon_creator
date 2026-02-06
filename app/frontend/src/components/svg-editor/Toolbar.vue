@@ -30,6 +30,9 @@ const tools: { id: Tool; label: string; shortcutKey: string; icon: SvgElement[] 
   { id: 'bubble', label: 'Bubble', shortcutKey: 'B', icon: [
     { tag: 'path', attrs: { d: 'M21 15a2 2 0 0 1-2 2H7l-4 4V5a2 2 0 0 1 2-2h14a2 2 0 0 1 2 2z' } },
   ] },
+  { id: 'text', label: 'Text', shortcutKey: 'T', icon: [
+    { tag: 'path', attrs: { d: 'M6 4v2M18 4v2M6 4h12M12 4v16M8 20h8' } },
+  ] },
 ]
 </script>
 
