@@ -13,6 +13,14 @@ const isPanning = ref(false)
 const lastPanPoint = ref<Point>({ x: 0, y: 0 })
 const isSpacePressed = ref(false)
 
+// Drag state for moving selected elements
+const isDragging = ref(false)
+const dragStartSvg = ref<Point>({ x: 0, y: 0 })
+const lastDragSvg = ref<Point>({ x: 0, y: 0 })
+const dragStartedOnId = ref<string | null>(null)
+const dragDidMove = ref(false)
+const DRAG_THRESHOLD = 3 // px in screen-space before drag activates
+
 // Touch state for pinch zoom and touch pan
 const activeTouchCount = ref(0)
 const initialPinchDistance = ref(0)
@@ -62,6 +70,9 @@ const startToolAction = (point: Point | null) => {
   if (!point) return
 
   switch (editor.currentTool.value) {
+    case 'select':
+      editor.clearSelection()
+      break
     case 'draw':
       isDrawing.value = true
       currentPath.value = [point]
@@ -98,15 +109,37 @@ const handleMouseMove = (e: MouseEvent) => {
     return
   }
 
+  if (isDragging.value && editor.selectedIds.value.size > 0) {
+    const svgPt = getCanvasPoint(e)
+    if (!svgPt) return
+    applyDragMove(svgPt)
+    return
+  }
+
   if (isDrawing.value && editor.currentTool.value === 'draw') {
     const point = getCanvasPoint(e)
     if (point) currentPath.value.push(point)
   }
 }
 
-const handleMouseUp = () => {
+const handleMouseUp = (e: MouseEvent) => {
   if (isPanning.value) {
     isPanning.value = false
+    return
+  }
+
+  if (isDragging.value) {
+    const id = dragStartedOnId.value
+    if (!dragDidMove.value && id) {
+      // No drag occurred — treat as a click for selection toggle
+      if (e.shiftKey && editor.selectedIds.value.has(id)) {
+        editor.selectedIds.value.delete(id)
+      }
+      // Non-shift click on already-selected: keep selection (allows re-clicking without deselect)
+    }
+    isDragging.value = false
+    dragStartedOnId.value = null
+    dragDidMove.value = false
     return
   }
 
@@ -186,6 +219,13 @@ const handleTouchMove = (e: TouchEvent) => {
     return
   }
 
+  if (e.touches.length === 1 && isDragging.value && editor.selectedIds.value.size > 0) {
+    const svgPt = getCanvasPoint(e.touches[0]!)
+    if (!svgPt) return
+    applyDragMove(svgPt)
+    return
+  }
+
   if (e.touches.length === 1 && isDrawing.value && editor.currentTool.value === 'draw') {
     const point = getCanvasPoint(e.touches[0]!)
     if (point) currentPath.value.push(point)
@@ -201,6 +241,15 @@ const handleTouchEnd = (e: TouchEvent) => {
     } else {
       activeTouchCount.value = e.touches.length
     }
+    return
+  }
+
+  if (isDragging.value) {
+    isDragging.value = false
+    dragStartedOnId.value = null
+    dragDidMove.value = false
+    isPanning.value = false
+    activeTouchCount.value = e.touches.length
     return
   }
 
@@ -227,28 +276,75 @@ const handleKeyUp = (e: KeyboardEvent) => {
   }
 }
 
-const handlePathClick = (id: string, e: MouseEvent) => {
-  if (editor.currentTool.value === 'select') {
-    editor.selectItem(id, e.shiftKey)
-  } else if (editor.currentTool.value === 'erase') {
-    editor.deletePath(id)
-  } else if (editor.currentTool.value === 'node') {
-    editor.editingNodePath.value = id
+/** Apply drag movement from a new SVG point. Shared by mouse and touch move handlers. */
+const applyDragMove = (svgPt: Point) => {
+  if (!dragDidMove.value) {
+    const svgDist = Math.sqrt(
+      (svgPt.x - dragStartSvg.value.x) ** 2 + (svgPt.y - dragStartSvg.value.y) ** 2,
+    )
+    if (svgDist * editor.zoom.value < DRAG_THRESHOLD) return
+
+    editor.saveState()
+    dragDidMove.value = true
   }
+
+  const dx = svgPt.x - lastDragSvg.value.x
+  const dy = svgPt.y - lastDragSvg.value.y
+  editor.moveElements(editor.selectedIds.value, dx, dy)
+  lastDragSvg.value = { ...svgPt }
+}
+
+/** Begin a potential drag on an element. Called from element mousedown/touchstart in select tool. */
+const startElementDrag = (id: string, e: MouseEvent | Touch, shiftKey = false) => {
+  const svgPt = getCanvasPoint(e)
+  if (!svgPt) return
+
+  // If clicking an unselected element without shift, select only this one
+  if (!editor.selectedIds.value.has(id) && !shiftKey) {
+    editor.selectedIds.value.clear()
+    editor.selectedIds.value.add(id)
+  } else if (!editor.selectedIds.value.has(id) && shiftKey) {
+    editor.selectedIds.value.add(id)
+  }
+  // If clicking an already-selected element, we handle deselect on mouseup (if no drag)
+
+  dragStartedOnId.value = id
+  dragStartSvg.value = { ...svgPt }
+  lastDragSvg.value = { ...svgPt }
+  dragDidMove.value = false
+  isDragging.value = true
+}
+
+/** Shared mousedown for any element — initiates drag in select tool. */
+const handleElementMouseDown = (id: string, e: MouseEvent) => {
+  if (editor.currentTool.value === 'select') {
+    e.stopPropagation()
+    startElementDrag(id, e, e.shiftKey)
+  }
+}
+
+/** Shared touchstart for any element — initiates drag in select tool. */
+const handleElementTouchStart = (id: string, e: TouchEvent) => {
+  if (editor.currentTool.value === 'select' && e.touches.length === 1) {
+    e.stopPropagation()
+    activeTouchCount.value = 1
+    startElementDrag(id, e.touches[0]!)
+  }
+}
+
+const handlePathClick = (id: string, _e: MouseEvent) => {
+  if (editor.currentTool.value === 'select') return
+  if (editor.currentTool.value === 'erase') editor.deletePath(id)
+  else if (editor.currentTool.value === 'node') editor.editingNodePath.value = id
 }
 
 const handleBubbleClick = (id: string, e: MouseEvent) => {
-  if (editor.currentTool.value === 'select' || editor.currentTool.value === 'bubble') {
-    editor.selectItem(id, e.shiftKey)
-  }
+  if (editor.currentTool.value === 'bubble') editor.selectItem(id, e.shiftKey)
 }
 
 const handleTextClick = (id: string, e: MouseEvent) => {
-  if (editor.currentTool.value === 'select' || editor.currentTool.value === 'text') {
-    editor.selectItem(id, e.shiftKey)
-  } else if (editor.currentTool.value === 'erase') {
-    editor.deleteText(id)
-  }
+  if (editor.currentTool.value === 'text') editor.selectItem(id, e.shiftKey)
+  else if (editor.currentTool.value === 'erase') editor.deleteText(id)
 }
 
 const handleTextDblClick = (id: string) => {
@@ -328,6 +424,7 @@ const textInputWidth = (textItem: { content: string; fontSize: number }): number
 
 const cursorStyle = computed(() => {
   if (isPanning.value || isSpacePressed.value) return 'grabbing'
+  if (isDragging.value && dragDidMove.value) return 'grabbing'
   switch (editor.currentTool.value) {
     case 'draw': return 'crosshair'
     case 'erase': return 'pointer'
@@ -386,6 +483,8 @@ const cursorStyle = computed(() => {
         stroke-linejoin="round"
         :class="{ selected: editor.selectedIds.value.has(path.id) }"
         @click.stop="handlePathClick(path.id, $event)"
+        @mousedown="handleElementMouseDown(path.id, $event)"
+        @touchstart="handleElementTouchStart(path.id, $event)"
       />
     </g>
 
@@ -396,6 +495,8 @@ const cursorStyle = computed(() => {
         :key="bubble.id"
         :class="{ selected: editor.selectedIds.value.has(bubble.id) }"
         @click.stop="handleBubbleClick(bubble.id, $event)"
+        @mousedown="handleElementMouseDown(bubble.id, $event)"
+        @touchstart="handleElementTouchStart(bubble.id, $event)"
       >
         <!-- Tail (behind rect so rect covers the base) -->
         <polygon
@@ -450,6 +551,8 @@ const cursorStyle = computed(() => {
           :font-size="textItem.fontSize"
           fill="black"
           @click.stop="handleTextClick(textItem.id, $event)"
+          @mousedown="handleElementMouseDown(textItem.id, $event)"
+          @touchstart="handleElementTouchStart(textItem.id, $event)"
           @dblclick.stop="handleTextDblClick(textItem.id)"
         >
           {{ textItem.content }}
@@ -517,6 +620,7 @@ g.selected rect,
 g.selected text {
   stroke: #4f46e5;
   stroke-width: 3;
+  cursor: move;
 }
 
 g.selected > text {

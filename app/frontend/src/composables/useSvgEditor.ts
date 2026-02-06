@@ -1,5 +1,6 @@
 // [Composable]: SVG editor state and operations. Responsible for canvas state, path/bubble/text CRUD, undo/redo, import/export, zoom/pan. NOT concerned with DOM event handling or rendering.
 import { ref, reactive, computed } from 'vue'
+import { translatePathD } from '../utils/svgPathUtils'
 
 export type Tool = 'select' | 'node' | 'draw' | 'erase' | 'bubble' | 'text'
 export type Layer = 'art' | 'bubbles' | 'text'
@@ -217,6 +218,29 @@ export function useSvgEditor() {
     return `${base1X},${baseY} ${base2X},${baseY} ${bubble.tailX},${bubble.tailY}`
   }
 
+  /**
+   * Translate a set of elements by (dx, dy) in SVG coordinates.
+   * Callers must call saveState() before the first move in a drag sequence.
+   */
+  const moveElements = (ids: Set<string>, dx: number, dy: number) => {
+    for (const path of paths.value) {
+      if (!ids.has(path.id)) continue
+      path.d = translatePathD(path.d, dx, dy)
+    }
+    for (const bubble of bubbles.value) {
+      if (!ids.has(bubble.id)) continue
+      bubble.x += dx
+      bubble.y += dy
+      bubble.tailX += dx
+      bubble.tailY += dy
+    }
+    for (const text of texts.value) {
+      if (!ids.has(text.id)) continue
+      text.x += dx
+      text.y += dy
+    }
+  }
+
   const deleteSelected = () => {
     if (selectedIds.value.size === 0) return
 
@@ -405,6 +429,7 @@ export function useSvgEditor() {
     deleteText,
     commitTextEdit,
     bubbleTailPoints,
+    moveElements,
     deleteSelected,
     clearSelection,
     selectItem,
