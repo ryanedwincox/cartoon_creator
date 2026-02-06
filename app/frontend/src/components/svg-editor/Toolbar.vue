@@ -1,16 +1,42 @@
+<!-- [Component]: SVG editor tool selection bar. Responsible for rendering tool buttons with icons and managing active tool state. NOT concerned with tool behavior or canvas interaction. -->
 <script setup lang="ts">
 import { inject } from 'vue'
 import type { Tool } from '../../composables/useSvgEditor'
 
 const editor = inject('svgEditor') as ReturnType<typeof import('../../composables/useSvgEditor').useSvgEditor>
 
-const tools: { id: Tool; label: string; shortcut: string }[] = [
-  { id: 'select', label: 'V', shortcut: 'Select' },
-  { id: 'node', label: 'N', shortcut: 'Node' },
-  { id: 'draw', label: 'D', shortcut: 'Draw' },
-  { id: 'erase', label: 'E', shortcut: 'Erase' },
-  { id: 'bubble', label: 'B', shortcut: 'Bubble' },
-  { id: 'thought', label: 'T', shortcut: 'Thought' },
+interface SvgElement {
+  tag: 'path' | 'circle'
+  attrs: Record<string, string | number>
+}
+
+const tools: { id: Tool; label: string; shortcutKey: string; icon: SvgElement[] }[] = [
+  { id: 'select', label: 'Select', shortcutKey: 'V', icon: [
+    { tag: 'path', attrs: { d: 'M4 4l7 17 2.5-6.5L20 12z' } },
+  ] },
+  { id: 'node', label: 'Node', shortcutKey: 'N', icon: [
+    { tag: 'path', attrs: { d: 'M12 3v18M3 12h18' } },
+    { tag: 'circle', attrs: { cx: 12, cy: 12, r: 3, fill: 'currentColor' } },
+  ] },
+  { id: 'draw', label: 'Draw', shortcutKey: 'D', icon: [
+    { tag: 'path', attrs: { d: 'M17 3a2.83 2.83 0 1 1 4 4L7.5 20.5 2 22l1.5-5.5Z' } },
+    { tag: 'path', attrs: { d: 'm15 5 4 4' } },
+  ] },
+  { id: 'erase', label: 'Erase', shortcutKey: 'E', icon: [
+    { tag: 'path', attrs: { d: 'm7 21-4.3-4.3c-1-1-1-2.5 0-3.4l9.6-9.6c1-1 2.5-1 3.4 0l5.6 5.6c1 1 1 2.5 0 3.4L13 21' } },
+    { tag: 'path', attrs: { d: 'M22 21H7' } },
+    { tag: 'path', attrs: { d: 'm5 11 9 9' } },
+  ] },
+  { id: 'bubble', label: 'Bubble', shortcutKey: 'B', icon: [
+    { tag: 'path', attrs: { d: 'M21 15a2 2 0 0 1-2 2H7l-4 4V5a2 2 0 0 1 2-2h14a2 2 0 0 1 2 2z' } },
+  ] },
+  { id: 'thought', label: 'Thought', shortcutKey: 'T', icon: [
+    { tag: 'path', attrs: { d: 'M17.5 19a4.5 4.5 0 1 0 0-9 4.5 4.5 0 0 0 0 9Z' } },
+    { tag: 'path', attrs: { d: 'M9.4 14.6a4.5 4.5 0 1 1 3.1-8.4' } },
+    { tag: 'path', attrs: { d: 'M14.8 7a4.5 4.5 0 0 1 6.2 3.1' } },
+    { tag: 'circle', attrs: { cx: 8, cy: 19, r: 1.5, fill: 'currentColor' } },
+    { tag: 'circle', attrs: { cx: 5, cy: 21, r: 1, fill: 'currentColor' } },
+  ] },
 ]
 </script>
 
@@ -21,10 +47,15 @@ const tools: { id: Tool; label: string; shortcut: string }[] = [
       :key="tool.id"
       :class="['tool-btn', { active: editor.currentTool.value === tool.id }]"
       :data-tool="tool.id"
-      :title="`${tool.shortcut} (${tool.label})`"
+      :title="`${tool.label} (${tool.shortcutKey})`"
       @click="editor.currentTool.value = tool.id"
     >
-      {{ tool.label }}
+      <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round">
+        <template v-for="(el, i) in tool.icon" :key="i">
+          <path v-if="el.tag === 'path'" v-bind="el.attrs" />
+          <circle v-else-if="el.tag === 'circle'" v-bind="el.attrs" />
+        </template>
+      </svg>
     </button>
   </div>
 </template>
@@ -45,9 +76,16 @@ const tools: { id: Tool; label: string; shortcut: string }[] = [
   border-radius: 0.5rem;
   background: var(--border);
   color: var(--text);
-  font-weight: 600;
-  font-size: 0.875rem;
   transition: all 0.15s;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  padding: 0.375rem;
+}
+
+.tool-btn svg {
+  width: 1.25rem;
+  height: 1.25rem;
 }
 
 .tool-btn:hover {
