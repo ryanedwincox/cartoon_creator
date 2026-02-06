@@ -542,23 +542,23 @@ const cursorStyle = computed(() => {
     @touchend="handleTouchEnd"
     @touchcancel="handleTouchEnd"
   >
-    <!-- Canvas background -->
+    <!-- Viewport background (fills entire visible area with editor gray) -->
     <rect
       :x="-editor.panX.value / editor.zoom.value"
       :y="-editor.panY.value / editor.zoom.value"
       :width="editor.CANVAS_SIZE / editor.zoom.value"
       :height="editor.CANVAS_SIZE / editor.zoom.value"
-      fill="white"
+      fill="#e5e7eb"
     />
 
-    <!-- Canvas border -->
+    <!-- Canvas (white drawing area with subtle border) -->
     <rect
       x="0"
       y="0"
       :width="editor.sourceWidth.value"
       :height="editor.sourceHeight.value"
       fill="white"
-      stroke="#ccc"
+      stroke="#d1d5db"
       stroke-width="1"
     />
 
