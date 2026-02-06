@@ -2,14 +2,24 @@
 """Centerline-trace a black-and-white PNG into a single-stroke SVG."""
 
 import sys
+from collections import defaultdict
+from collections.abc import Generator
+from pathlib import Path
+
 import numpy as np
 from PIL import Image
-from skimage.morphology import skeletonize, erosion
-from scipy.ndimage import distance_transform_edt
-from collections import defaultdict
+from scipy.ndimage import distance_transform_edt, label as ndimage_label
+from skimage.morphology import erosion, thin
 
-def neighbors(y, x, shape):
-    """8-connected neighbors."""
+# Dot detection thresholds (for filled circles like eyes, punctuation)
+DOT_MIN_AREA = 10
+DOT_MAX_AREA = 500
+DOT_MIN_CIRCULARITY = 0.6
+DOT_MAX_CIRCULARITY = 1.5
+DOT_MIN_ASPECT = 0.6
+
+
+def neighbors(y: int, x: int, shape: tuple[int, ...]) -> Generator[tuple[int, int], None, None]:
     for dy in (-1, 0, 1):
         for dx in (-1, 0, 1):
             if dy == 0 and dx == 0:
@@ -18,8 +28,8 @@ def neighbors(y, x, shape):
             if 0 <= ny < shape[0] and 0 <= nx < shape[1]:
                 yield ny, nx
 
-def trace_paths(skeleton):
-    """Walk the skeleton graph and extract polyline paths."""
+
+def trace_paths(skeleton: np.ndarray) -> list[list[tuple[int, int]]]:
     adj = defaultdict(list)
     points = set()
     ys, xs = np.where(skeleton)
@@ -97,8 +107,9 @@ def trace_paths(skeleton):
 
     return paths
 
-def simplify_path(path, tolerance=1.0):
-    """Ramer-Douglas-Peucker simplification."""
+
+def simplify_path(path: list[tuple[int, int]], tolerance: float = 1.0) -> list[tuple[int, int]]:
+    # Ramer-Douglas-Peucker
     if len(path) <= 2:
         return path
 
@@ -128,11 +139,9 @@ def simplify_path(path, tolerance=1.0):
     right = simplify_path(path[max_idx:], tolerance)
     return left[:-1] + right
 
-def chaikin_smooth(pts, iterations=2):
-    """Chaikin's corner-cutting: replace each corner with two points at 25%/75%.
 
-    Preserves the first and last points of open paths.
-    """
+def chaikin_smooth(pts: list[tuple[float, float]], iterations: int = 2) -> list[tuple[float, float]]:
+    # Chaikin's corner-cutting (25%/75% split, preserves endpoints)
     if len(pts) < 3:
         return pts
 
@@ -157,9 +166,69 @@ def chaikin_smooth(pts, iterations=2):
 
     return pts
 
-def main():
+
+def save_debug_image(debug_dir: Path, step: int, name: str, array: np.ndarray, *, normalize: bool = False) -> None:
+    if normalize and array.dtype in (np.float32, np.float64, float):
+        vmin, vmax = array.min(), array.max()
+        if vmax > vmin:
+            scaled = ((array - vmin) / (vmax - vmin) * 255).astype(np.uint8)
+        else:
+            scaled = np.zeros_like(array, dtype=np.uint8)
+        img = Image.fromarray(scaled, mode="L")
+    elif array.dtype == bool:
+        img = Image.fromarray((~array).astype(np.uint8) * 255, mode="L")
+    elif array.ndim == 3:
+        img = Image.fromarray(array.astype(np.uint8), mode="RGB")
+    else:
+        img = Image.fromarray(array.astype(np.uint8), mode="L")
+
+    filename = f"{step:02d}_{name}.png"
+    img.save(debug_dir / filename)
+    print(f"  Debug: saved {filename}")
+
+
+def detect_filled_dots(
+    binary: np.ndarray, dist: np.ndarray, labeled: np.ndarray, num_components: int,
+) -> tuple[list[tuple[float, float, float]], np.ndarray]:
+    """Detect filled dot-like regions that collapse to a single pixel under thinning."""
+    dots: list[tuple[float, float, float]] = []
+    dot_mask = np.zeros_like(binary)
+
+    for comp_id in range(1, num_components + 1):
+        comp_mask = labeled == comp_id
+        comp_area = int(np.sum(comp_mask))
+
+        if comp_area < DOT_MIN_AREA or comp_area > DOT_MAX_AREA:
+            continue
+
+        comp_max_dist = float(dist[comp_mask].max())
+        ideal_circle_area = np.pi * comp_max_dist ** 2
+
+        # Circularity: area / ideal circle area. Filled dots ≈ 1.0,
+        # elongated strokes >> 1, thin rings << 1.
+        circularity = comp_area / ideal_circle_area if ideal_circle_area > 0 else 0
+
+        ys, xs = np.where(comp_mask)
+        height = ys.max() - ys.min() + 1
+        width = xs.max() - xs.min() + 1
+        aspect = min(width, height) / max(width, height) if max(width, height) > 0 else 0
+
+        if DOT_MIN_CIRCULARITY < circularity < DOT_MAX_CIRCULARITY and aspect > DOT_MIN_ASPECT:
+            cy = float(ys.mean())
+            cx = float(xs.mean())
+            dots.append((cx, cy, comp_max_dist))
+            dot_mask |= comp_mask
+
+    return dots, dot_mask
+
+
+def main() -> None:
     if len(sys.argv) < 2:
-        print(f"Usage: {sys.argv[0]} <input.png> [output.svg] [--stroke-width N] [--tolerance N] [--smooth N]", file=sys.stderr)
+        print(
+            f"Usage: {sys.argv[0]} <input.png> [output.svg]"
+            f" [--stroke-width N] [--tolerance N] [--smooth N] [--debug]",
+            file=sys.stderr,
+        )
         sys.exit(1)
 
     args = sys.argv[1:]
@@ -168,6 +237,7 @@ def main():
     stroke_width = 3.0
     tolerance = 1.5
     smooth_iterations = 0  # Smoothing disabled — was causing artifacts
+    debug = False
 
     i = 1
     while i < len(args):
@@ -180,6 +250,9 @@ def main():
         elif args[i] == "--smooth" and i + 1 < len(args):
             smooth_iterations = int(args[i + 1])
             i += 2
+        elif args[i] == "--debug":
+            debug = True
+            i += 1
         elif output_file is None:
             output_file = args[i]
             i += 1
@@ -189,7 +262,13 @@ def main():
     if output_file is None:
         output_file = input_file.rsplit(".", 1)[0] + "_centerline.svg"
 
-    # Load and threshold
+    debug_dir: Path | None = None
+    if debug:
+        debug_dir = Path(input_file.rsplit(".", 1)[0] + "_debug")
+        debug_dir.mkdir(parents=True, exist_ok=True)
+        print(f"Debug images → {debug_dir}/")
+
+    # --- Step 1: Load and threshold ---
     img = Image.open(input_file).convert("L")
     arr = np.array(img, dtype=float)
     print(f"Input: {img.size[0]}x{img.size[1]}")
@@ -197,9 +276,11 @@ def main():
     binary = arr < 128
     print(f"Dark pixels: {np.sum(binary)}")
 
-    # Measure stroke width via distance transform
+    if debug_dir:
+        save_debug_image(debug_dir, 1, "input_binary", binary)
+
+    # --- Step 2: Measure stroke width via distance transform ---
     dist = distance_transform_edt(binary)
-    # Median distance of interior pixels gives half the stroke width
     interior_dists = dist[dist > 0]
     if len(interior_dists) > 0:
         half_width = np.median(interior_dists)
@@ -209,23 +290,49 @@ def main():
         half_width = 4
         stroke_auto = 8
 
-    # Erode the binary image to thin lines down to ~2px before skeletonizing.
-    # This eliminates the thick-line junction artifacts that cause spurs.
+    if debug_dir:
+        save_debug_image(debug_dir, 2, "distance_transform", dist, normalize=True)
+
+    # --- Step 3: Detect filled dots (eyes, punctuation, etc.) ---
+    # Filled circles have no meaningful centerline — thinning collapses them
+    # to a single pixel. Detect them and emit as SVG circles instead.
+    labeled, num_components = ndimage_label(binary)
+    dots, dot_mask = detect_filled_dots(binary, dist, labeled, num_components)
+    print(f"Found {num_components} connected components, {len(dots)} filled dots")
+
+    # Build the stroke mask: everything that isn't a filled dot
+    stroke_mask = binary & ~dot_mask
+
+    if debug_dir:
+        comp_vis = np.zeros((*binary.shape, 3), dtype=np.uint8)
+        comp_vis[stroke_mask] = [255, 255, 255]
+        comp_vis[dot_mask] = [255, 80, 80]
+        save_debug_image(debug_dir, 3, "components", comp_vis)
+
+    # --- Step 4: Erode stroke regions ---
     erode_radius = max(1, int(half_width) - 1)
-    print(f"Eroding by {erode_radius}px to thin lines before skeletonizing")
-    eroded = binary.copy()
+    print(f"Eroding stroke regions by {erode_radius}px")
+    eroded = stroke_mask.copy()
     for _ in range(erode_radius):
         eroded = erosion(eroded)
 
-    # Skeletonize the thinned image - much cleaner at junctions
-    skel = skeletonize(eroded)
+    if debug_dir:
+        save_debug_image(debug_dir, 4, "eroded", eroded)
+
+    # --- Step 5: Thin (morphological thinning) ---
+    # thin() produces cleaner junctions than skeletonize() — fewer spur
+    # branches where thick lines meet at corners.
+    skel = thin(eroded)
     print(f"Skeleton: {np.sum(skel)} pixels")
 
-    # Trace paths
+    if debug_dir:
+        save_debug_image(debug_dir, 5, "skeleton", skel)
+
+    # --- Step 6: Trace paths ---
     paths = trace_paths(skel)
     print(f"Traced {len(paths)} paths")
 
-    # Simplify
+    # --- Step 7: Simplify ---
     simplified = []
     for path in paths:
         sp = simplify_path(path, tolerance=tolerance)
@@ -233,7 +340,7 @@ def main():
             simplified.append(sp)
     print(f"After simplification: {len(simplified)} paths, {sum(len(p) for p in simplified)} points")
 
-    # Smooth corners via Chaikin's corner-cutting
+    # --- Step 8: Smooth (optional) ---
     if smooth_iterations > 0:
         smoothed = []
         for path in simplified:
@@ -244,20 +351,37 @@ def main():
     else:
         smoothed = [[(float(p[1]), float(p[0])) for p in path] for path in simplified]
 
-    # Write SVG
+    if debug_dir:
+        overlay = np.stack([arr.astype(np.uint8)] * 3, axis=-1)
+        sy, sx = np.where(skel)
+        overlay[sy, sx] = [255, 0, 0]
+        # Mark dots in blue
+        dy, dx = np.where(dot_mask)
+        overlay[dy, dx] = [0, 100, 255]
+        save_debug_image(debug_dir, 6, "overlay", overlay)
+
+    # --- Step 9: Write SVG ---
     w, h = img.size
     with open(output_file, "w") as f:
         f.write(f'<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 {w} {h}" width="{w}" height="{h}">\n')
         f.write(f'  <rect width="{w}" height="{h}" fill="white"/>\n')
+
+        # Emit centerline paths
         for pts in smoothed:
             d = f"M {pts[0][0]:.1f},{pts[0][1]:.1f}"
             for pt in pts[1:]:
                 d += f" L {pt[0]:.1f},{pt[1]:.1f}"
             f.write(f'  <path d="{d}" fill="none" stroke="black" '
                     f'stroke-width="{stroke_width}" stroke-linecap="round" stroke-linejoin="round"/>\n')
+
+        # Emit filled dots as circles
+        for cx, cy, radius in dots:
+            f.write(f'  <circle cx="{cx:.1f}" cy="{cy:.1f}" r="{radius:.1f}" fill="black"/>\n')
+
         f.write("</svg>\n")
 
-    print(f"Saved {output_file}")
+    print(f"Saved {output_file} ({len(smoothed)} paths, {len(dots)} dots)")
+
 
 if __name__ == "__main__":
     main()
