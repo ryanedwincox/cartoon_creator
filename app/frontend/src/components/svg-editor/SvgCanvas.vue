@@ -104,7 +104,7 @@ const handleMouseUp = () => {
     return
   }
 
-  if (isDrawing.value && currentPath.value.length > 1) {
+  if (isDrawing.value && currentPath.value.length >= 1) {
     const d = pointsToPath(currentPath.value)
     editor.addPath(d)
   }
@@ -198,7 +198,7 @@ const handleTouchEnd = (e: TouchEvent) => {
     return
   }
 
-  if (isDrawing.value && currentPath.value.length > 1) {
+  if (isDrawing.value && currentPath.value.length >= 1) {
     const d = pointsToPath(currentPath.value)
     editor.addPath(d)
   }
@@ -248,7 +248,12 @@ onUnmounted(() => {
 })
 
 function pointsToPath(points: Point[]): string {
-  if (points.length < 2) return ''
+  if (points.length === 0) return ''
+
+  // Single point → zero-length line (renders as dot with stroke-linecap="round")
+  if (points.length === 1) {
+    return `M ${points[0].x} ${points[0].y} L ${points[0].x} ${points[0].y}`
+  }
 
   // Catmull-Rom spline smoothing
   let d = `M ${points[0].x} ${points[0].y}`
