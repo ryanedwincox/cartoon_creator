@@ -1,7 +1,7 @@
 <!-- [Component]: Interactive SVG drawing canvas. Responsible for mouse/keyboard event handling, viewport pan/zoom, and rendering editor state. NOT concerned with data persistence or editor business logic. -->
 <script setup lang="ts">
 import { ref, inject, computed, onMounted, onUnmounted, nextTick, watch } from 'vue'
-import type { Point } from '../../composables/useSvgEditor'
+import type { Point, UndoState } from '../../composables/useSvgEditor'
 
 const editor = inject('svgEditor') as ReturnType<typeof import('../../composables/useSvgEditor').useSvgEditor>
 
@@ -39,6 +39,15 @@ const marqueeRect = computed(() => {
   }
 })
 
+// Resize state for bounding box corner handles
+const isResizing = ref(false)
+const resizeHandleId = ref<string | null>(null)
+const resizeAnchor = ref<Point>({ x: 0, y: 0 })
+const resizeStartCorner = ref<Point>({ x: 0, y: 0 })
+const resizeInitialDist = ref(0)
+const resizeDidMove = ref(false)
+const resizeSnapshot = ref<UndoState | null>(null)
+
 // Touch state for pinch zoom and touch pan
 const activeTouchCount = ref(0)
 const initialPinchDistance = ref(0)
@@ -50,6 +59,29 @@ const viewBox = computed(() => {
   const y = -editor.panY.value / editor.zoom.value
   const size = editor.CANVAS_SIZE / editor.zoom.value
   return `${x} ${y} ${size} ${size}`
+})
+
+/** Size of resize corner handles in SVG units (constant screen-pixel size regardless of zoom). */
+const handleSizeSvg = computed(() => 8 / editor.zoom.value)
+
+/** Stroke width for bounding box and handles in SVG units. */
+const boundingBoxStroke = computed(() => 1.5 / editor.zoom.value)
+
+/** Dash array for bounding box in SVG units. */
+const boundingBoxDash = computed(() => `${4 / editor.zoom.value} ${3 / editor.zoom.value}`)
+
+/** 4 corner handle descriptors derived from selectionBounds. Empty when no selection or wrong tool. */
+const cornerHandles = computed(() => {
+  const bounds = editor.selectionBounds.value
+  if (!bounds) return []
+
+  const { x, y, width, height } = bounds
+  return [
+    { id: 'nw', cx: x, cy: y, cursor: 'nwse-resize' },
+    { id: 'ne', cx: x + width, cy: y, cursor: 'nesw-resize' },
+    { id: 'sw', cx: x, cy: y + height, cursor: 'nesw-resize' },
+    { id: 'se', cx: x + width, cy: y + height, cursor: 'nwse-resize' },
+  ]
 })
 
 /** Convert screen-space coordinates to SVG viewBox coordinates via the current CTM. */
@@ -175,6 +207,12 @@ const handleMouseMove = (e: MouseEvent) => {
     return
   }
 
+  if (isResizing.value) {
+    const svgPt = getCanvasPoint(e)
+    if (svgPt) applyResize(svgPt)
+    return
+  }
+
   if (isDragging.value && editor.selectedIds.value.size > 0) {
     const svgPt = getCanvasPoint(e)
     if (!svgPt) return
@@ -197,6 +235,11 @@ const handleMouseMove = (e: MouseEvent) => {
 const handleMouseUp = (e: MouseEvent) => {
   if (isPanning.value) {
     isPanning.value = false
+    return
+  }
+
+  if (isResizing.value) {
+    resetResizeState()
     return
   }
 
@@ -254,10 +297,11 @@ const handleTouchStart = (e: TouchEvent) => {
     const t0 = e.touches[0]!
     const t1 = e.touches[1]!
 
-    // Two-finger gesture: pinch zoom + pan — cancel any in-progress drawing/marquee
+    // Two-finger gesture: pinch zoom + pan — cancel any in-progress drawing/marquee/resize
     isDrawing.value = false
     currentPath.value = []
     isMarqueeActive.value = false
+    resetResizeState()
     isPanning.value = true
 
     initialPinchDistance.value = getTouchDistance(t0, t1)
@@ -297,6 +341,12 @@ const handleTouchMove = (e: TouchEvent) => {
     return
   }
 
+  if (e.touches.length === 1 && isResizing.value) {
+    const svgPt = getCanvasPoint(e.touches[0]!)
+    if (svgPt) applyResize(svgPt)
+    return
+  }
+
   if (e.touches.length === 1 && isDragging.value && editor.selectedIds.value.size > 0) {
     const svgPt = getCanvasPoint(e.touches[0]!)
     if (!svgPt) return
@@ -328,6 +378,13 @@ const handleTouchEnd = (e: TouchEvent) => {
     return
   }
 
+  if (isResizing.value) {
+    resetResizeState()
+    isPanning.value = false
+    activeTouchCount.value = e.touches.length
+    return
+  }
+
   if (isDragging.value) {
     isDragging.value = false
     dragStartedOnId.value = null
@@ -353,6 +410,107 @@ const handleTouchEnd = (e: TouchEvent) => {
   currentPath.value = []
   isPanning.value = false
   activeTouchCount.value = e.touches.length
+}
+
+/** Begin a resize drag from a corner handle. */
+const startResize = (handleId: string) => {
+  const bounds = editor.selectionBounds.value
+  if (!bounds) return
+
+  const { x, y, width, height } = bounds
+
+  // Anchor is the opposite corner from the grabbed handle
+  const anchorMap: Record<string, Point> = {
+    nw: { x: x + width, y: y + height },
+    ne: { x, y: y + height },
+    sw: { x: x + width, y },
+    se: { x, y },
+  }
+  const cornerMap: Record<string, Point> = {
+    nw: { x, y },
+    ne: { x: x + width, y },
+    sw: { x, y: y + height },
+    se: { x: x + width, y: y + height },
+  }
+
+  const anchor = anchorMap[handleId]!
+  const corner = cornerMap[handleId]!
+
+  const dx = corner.x - anchor.x
+  const dy = corner.y - anchor.y
+  const initialDist = Math.sqrt(dx * dx + dy * dy)
+
+  // Guard: zero-area selection — abort resize
+  if (initialDist < 0.001) return
+
+  resizeHandleId.value = handleId
+  resizeAnchor.value = { ...anchor }
+  resizeStartCorner.value = { ...corner }
+  resizeInitialDist.value = initialDist
+  resizeDidMove.value = false
+  resizeSnapshot.value = null
+  isResizing.value = true
+}
+
+/** Apply resize movement from a new SVG point. */
+const applyResize = (svgPt: Point) => {
+  const anchor = resizeAnchor.value
+  const startCorner = resizeStartCorner.value
+
+  // Direction vector from anchor to original corner
+  const dirX = startCorner.x - anchor.x
+  const dirY = startCorner.y - anchor.y
+
+  // Project current mouse vector onto anchor→corner direction
+  const mouseX = svgPt.x - anchor.x
+  const mouseY = svgPt.y - anchor.y
+  const projectedDist = (mouseX * dirX + mouseY * dirY) / resizeInitialDist.value
+
+  if (!resizeDidMove.value) {
+    const svgDist = Math.sqrt(
+      (svgPt.x - startCorner.x) ** 2 + (svgPt.y - startCorner.y) ** 2,
+    )
+    if (svgDist * editor.zoom.value < DRAG_THRESHOLD) return
+
+    editor.saveState()
+    resizeSnapshot.value = editor.createSnapshot()
+    resizeDidMove.value = true
+  }
+
+  // Uniform scale factor — clamp to prevent inversion and extreme values
+  const scale = Math.min(Math.max(projectedDist / resizeInitialDist.value, 0.05), 20)
+
+  editor.scaleElements(
+    editor.selectedIds.value,
+    anchor.x,
+    anchor.y,
+    scale,
+    scale,
+    resizeSnapshot.value!,
+  )
+}
+
+/** Reset all resize-related refs to idle state. */
+const resetResizeState = () => {
+  isResizing.value = false
+  resizeHandleId.value = null
+  resizeDidMove.value = false
+  resizeSnapshot.value = null
+}
+
+/** Mousedown on a corner handle — start resize. */
+const handleResizeMouseDown = (handleId: string, e: MouseEvent) => {
+  e.stopPropagation()
+  startResize(handleId)
+}
+
+/** Touchstart on a corner handle — start resize. */
+const handleResizeTouchStart = (handleId: string, e: TouchEvent) => {
+  if (e.touches.length === 1) {
+    e.stopPropagation()
+    activeTouchCount.value = 1
+    startResize(handleId)
+  }
 }
 
 const handleKeyDown = (e: KeyboardEvent) => {
@@ -515,6 +673,11 @@ const textInputWidth = (textItem: { content: string; fontSize: number }): number
 
 const cursorStyle = computed(() => {
   if (isPanning.value || isSpacePressed.value) return 'grabbing'
+  if (isResizing.value) {
+    const handleId = resizeHandleId.value
+    if (handleId === 'nw' || handleId === 'se') return 'nwse-resize'
+    return 'nesw-resize'
+  }
   if (isDragging.value && dragDidMove.value) return 'grabbing'
   if (isMarqueeActive.value) return 'crosshair'
   switch (editor.currentTool.value) {
@@ -700,6 +863,37 @@ const cursorStyle = computed(() => {
       :height="marqueeRect.height"
       class="marquee-rect"
       pointer-events="none"
+    />
+
+    <!-- Selection bounding box -->
+    <rect
+      v-if="editor.selectionBounds.value"
+      :x="editor.selectionBounds.value.x"
+      :y="editor.selectionBounds.value.y"
+      :width="editor.selectionBounds.value.width"
+      :height="editor.selectionBounds.value.height"
+      fill="none"
+      stroke="#4f46e5"
+      :stroke-width="boundingBoxStroke"
+      :stroke-dasharray="boundingBoxDash"
+      pointer-events="none"
+    />
+
+    <!-- Corner resize handles -->
+    <rect
+      v-for="handle in cornerHandles"
+      :key="handle.id"
+      :x="handle.cx - handleSizeSvg / 2"
+      :y="handle.cy - handleSizeSvg / 2"
+      :width="handleSizeSvg"
+      :height="handleSizeSvg"
+      fill="white"
+      stroke="#4f46e5"
+      :stroke-width="boundingBoxStroke"
+      :style="{ cursor: handle.cursor }"
+      pointer-events="all"
+      @mousedown.stop="handleResizeMouseDown(handle.id, $event)"
+      @touchstart.stop="handleResizeTouchStart(handle.id, $event)"
     />
   </svg>
 </template>

@@ -1,0 +1,68 @@
+# SvgCanvas.ascii
+# Interactive SVG drawing canvas with pan/zoom, drawing, selection, and resize
+
++----------------------------------------------------------+
+| [viewport background: #e5e7eb, fills visible area]       |
+|                                                          |
+|  +--------------------------------------------+         |
+|  | [canvas: white, sourceWidth x sourceHeight] |         |
+|  |                                             |         |
+|  |  [#art-layer]                               |         |
+|  |    <path .selected? />...                   |         |
+|  |                                             |         |
+|  |  [#bubbles-layer]                           |         |
+|  |    <polygon tail /> + <rect rounded />...   |         |
+|  |                                             |         |
+|  |  [#text-layer]                              |         |
+|  |    <text bubble-text />...                  |         |
+|  |    <text standalone .selected? />...        |         |
+|  |    <foreignObject text-input />             |         |
+|  |                                             |         |
+|  |  [drawing-preview: opacity=0.5]             |         |
+|  |    <path current-stroke />                  |         |
+|  |                                             |         |
+|  |  [marquee-rect: dashed indigo]              |         |
+|  |    +-  -  -  -  -+                          |         |
+|  |    |              |                          |         |
+|  |    +-  -  -  -  -+                          |         |
+|  |                                             |         |
+|  |  [selection-bounding-box: dashed indigo]    |         |
+|  |    +- - - - - - -+                          |         |
+|  |    |              |                          |         |
+|  |    +- - - - - - -+                          |         |
+|  |                                             |         |
+|  |  [corner-handles: 4x white squares]         |         |
+|  |    [nw]            [ne]                     |         |
+|  |                                             |         |
+|  |    [sw]            [se]                     |         |
+|  |                                             |         |
+|  +--------------------------------------------+         |
+|                                                          |
++----------------------------------------------------------+
+
+## Element Table
+
+| ascii              | type         | attrs / notes                                      | region  | cond                             |
+|--------------------|--------------|---------------------------------------------------|---------|---------------------------------|
+| viewport bg        | rect         | fill=#e5e7eb, covers viewBox                      | root    | always                          |
+| canvas             | rect         | white fill, stroke=#d1d5db                        | root    | always                          |
+| path               | path         | per PathData, .selected highlight                 | art     | v-show layerVisibility.art      |
+| bubble group       | g > polygon+rect | tail polygon + rounded rect                  | bubbles | v-show layerVisibility.bubbles  |
+| bubble text        | text         | centered in bubble rect                           | text    | v-show layerVisibility.text     |
+| standalone text    | text / foreignObject | inline editing via foreignObject          | text    | v-show layerVisibility.text     |
+| drawing preview    | path         | opacity=0.5, current stroke                      | overlay | isDrawing && currentPathD       |
+| marquee rect       | rect         | dashed indigo fill+stroke                         | overlay | isMarqueeActive && has size     |
+| bounding box       | rect         | dashed indigo stroke, no fill, pointer-events=none| overlay | selectionBounds non-null        |
+| corner handles     | rect x4      | white fill, indigo stroke, constant screen size   | overlay | selectionBounds non-null        |
+
+## States
+
+| state     | cursor        | trigger                              |
+|-----------|---------------|--------------------------------------|
+| idle      | default/tool  | no interaction                       |
+| panning   | grabbing      | middle-click / space+drag / 2-finger |
+| drawing   | crosshair     | draw tool + mousedown                |
+| dragging  | grabbing      | select tool + element mousedown      |
+| marquee   | crosshair     | select tool + canvas mousedown       |
+| resizing  | nwse/nesw     | corner handle mousedown              |
+| text-edit | text          | text tool + click / dblclick         |

@@ -1,6 +1,6 @@
 // [Composable]: SVG editor state and operations. Responsible for canvas state, path/bubble/text CRUD, undo/redo, import/export, zoom/pan. NOT concerned with DOM event handling or rendering.
 import { ref, reactive, computed } from 'vue'
-import { translatePathD, parseTailFromPolygon } from '../utils/svgPathUtils'
+import { translatePathD, parseTailFromPolygon, getPathBoundsFromD, scalePathD } from '../utils/svgPathUtils'
 
 export type Tool = 'select' | 'node' | 'draw' | 'erase' | 'bubble' | 'text'
 export type Layer = 'art' | 'bubbles' | 'text'
@@ -58,6 +58,8 @@ const MAX_ZOOM = 4
 const FIT_VIEW_FILL_RATIO = 0.9
 const DEFAULT_FONT_SIZE = 14
 const DEFAULT_FONT_FAMILY = 'sans-serif'
+const TEXT_BOUNDS_WIDTH_PER_CHAR = 0.6
+const TEXT_BOUNDS_MIN_WIDTH_CHARS = 2
 
 export function useSvgEditor() {
   const currentTool = ref<Tool>('select')
@@ -104,6 +106,13 @@ export function useSvgEditor() {
     }
     version.value++
   }
+
+  /** Deep-clone the current element arrays into a snapshot for absolute-from-snapshot transforms. */
+  const createSnapshot = (): UndoState => ({
+    paths: JSON.parse(JSON.stringify(paths.value)),
+    bubbles: JSON.parse(JSON.stringify(bubbles.value)),
+    texts: JSON.parse(JSON.stringify(texts.value)),
+  })
 
   const undo = () => {
     if (undoStack.value.length === 0) return
@@ -258,6 +267,103 @@ export function useSvgEditor() {
       if (!ids.has(text.id)) continue
       text.x += dx
       text.y += dy
+    }
+  }
+
+  /** Compute the bounding box of an element from its reactive data model (no DOM access). */
+  const getElementBoundsFromData = (id: string): { x: number; y: number; width: number; height: number } | null => {
+    const path = paths.value.find(p => p.id === id)
+    if (path) return getPathBoundsFromD(path.d)
+
+    const bubble = bubbles.value.find(b => b.id === id)
+    if (bubble) {
+      // Envelope encompassing the bubble rect and its tail tip
+      const minX = Math.min(bubble.x, bubble.tailX)
+      const minY = Math.min(bubble.y, bubble.tailY)
+      const maxX = Math.max(bubble.x + bubble.width, bubble.tailX)
+      const maxY = Math.max(bubble.y + bubble.height, bubble.tailY)
+      return { x: minX, y: minY, width: maxX - minX, height: maxY - minY }
+    }
+
+    const textItem = texts.value.find(t => t.id === id)
+    if (textItem) {
+      // Heuristic: approximate text width from content length × fontSize factor
+      const estimatedWidth = Math.max(
+        textItem.content.length * textItem.fontSize * TEXT_BOUNDS_WIDTH_PER_CHAR,
+        textItem.fontSize * TEXT_BOUNDS_MIN_WIDTH_CHARS,
+      )
+      return { x: textItem.x, y: textItem.y - textItem.fontSize, width: estimatedWidth, height: textItem.fontSize }
+    }
+
+    return null
+  }
+
+  /** Union bounding box of all selected elements. Fully reactive — reads from reactive arrays. */
+  const selectionBounds = computed<{ x: number; y: number; width: number; height: number } | null>(() => {
+    if (selectedIds.value.size === 0 || currentTool.value !== 'select') return null
+
+    let minX = Infinity
+    let minY = Infinity
+    let maxX = -Infinity
+    let maxY = -Infinity
+    let hasAny = false
+
+    for (const id of selectedIds.value) {
+      const bounds = getElementBoundsFromData(id)
+      if (!bounds) continue
+      hasAny = true
+      if (bounds.x < minX) minX = bounds.x
+      if (bounds.y < minY) minY = bounds.y
+      if (bounds.x + bounds.width > maxX) maxX = bounds.x + bounds.width
+      if (bounds.y + bounds.height > maxY) maxY = bounds.y + bounds.height
+    }
+
+    if (!hasAny) return null
+    return { x: minX, y: minY, width: maxX - minX, height: maxY - minY }
+  })
+
+  /**
+   * Scale selected elements about an origin point, reading from a snapshot to avoid drift.
+   *
+   * Writes `snapshot * totalScale` into the live arrays — absolute-from-snapshot approach.
+   */
+  const scaleElements = (
+    ids: Set<string>,
+    originX: number,
+    originY: number,
+    sx: number,
+    sy: number,
+    snapshot: UndoState,
+  ) => {
+    for (const snapPath of snapshot.paths) {
+      if (!ids.has(snapPath.id)) continue
+      const liveIdx = paths.value.findIndex(p => p.id === snapPath.id)
+      if (liveIdx < 0) continue
+      paths.value[liveIdx]!.d = scalePathD(snapPath.d, originX, originY, sx, sy)
+      paths.value[liveIdx]!.strokeWidth = snapPath.strokeWidth * Math.abs(sx)
+    }
+
+    for (const snapBubble of snapshot.bubbles) {
+      if (!ids.has(snapBubble.id)) continue
+      const liveIdx = bubbles.value.findIndex(b => b.id === snapBubble.id)
+      if (liveIdx < 0) continue
+      const b = bubbles.value[liveIdx]!
+      b.x = originX + (snapBubble.x - originX) * sx
+      b.y = originY + (snapBubble.y - originY) * sy
+      b.width = snapBubble.width * Math.abs(sx)
+      b.height = snapBubble.height * Math.abs(sy)
+      b.tailX = originX + (snapBubble.tailX - originX) * sx
+      b.tailY = originY + (snapBubble.tailY - originY) * sy
+    }
+
+    for (const snapText of snapshot.texts) {
+      if (!ids.has(snapText.id)) continue
+      const liveIdx = texts.value.findIndex(t => t.id === snapText.id)
+      if (liveIdx < 0) continue
+      const t = texts.value[liveIdx]!
+      t.x = originX + (snapText.x - originX) * sx
+      t.y = originY + (snapText.y - originY) * sy
+      t.fontSize = snapText.fontSize * Math.abs(sx)
     }
   }
 
@@ -539,6 +645,7 @@ export function useSvgEditor() {
 
     // Actions
     saveState,
+    createSnapshot,
     undo,
     redo,
     addPath,
@@ -552,6 +659,8 @@ export function useSvgEditor() {
     commitTextEdit,
     bubbleTailPoints,
     moveElements,
+    scaleElements,
+    getElementBoundsFromData,
     deleteSelected,
     clearSelection,
     selectItem,
@@ -564,6 +673,7 @@ export function useSvgEditor() {
     // Computed
     canUndo,
     canRedo,
+    selectionBounds,
 
     // Constants
     CANVAS_SIZE,
