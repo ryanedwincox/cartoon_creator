@@ -1,7 +1,7 @@
 """File operations for projects."""
 import asyncio
 from pathlib import Path
-from typing import Literal, Optional
+from typing import Literal
 
 from fastapi import APIRouter, HTTPException, UploadFile, File
 from fastapi.responses import FileResponse
@@ -15,7 +15,6 @@ FileType = Literal["png", "svg", "json", "txt", "other"]
 
 
 class FileInfo(BaseModel):
-    """File information."""
     name: str
     type: FileType
     size: int
@@ -29,8 +28,15 @@ MAX_TEXT_FILE_SIZE = 1_000_000  # 1 MB
 
 
 class TextContent(BaseModel):
-    """Response model for text file content."""
     content: str
+
+
+def _resolve_project_file(project_id: str, filename: str) -> Path:
+    project_dir = (DATA_DIR / project_id).resolve()
+    file_path = (project_dir / filename).resolve()
+    if not file_path.is_relative_to(project_dir):
+        raise HTTPException(status_code=400, detail="Invalid filename")
+    return file_path
 
 
 def get_file_type(name: str) -> FileType:
@@ -54,31 +60,31 @@ async def list_files(project_id: str) -> list[FileInfo]:
     if not project_dir.exists():
         raise HTTPException(status_code=404, detail="Project not found")
 
-    files = []
-    for f in sorted(project_dir.iterdir()):
-        if not f.is_file():
-            continue
-        stat = f.stat()
-        files.append(FileInfo(
-            name=f.name,
-            type=get_file_type(f.name),
-            size=stat.st_size,
-            mtime=stat.st_mtime,
-            is_hidden=f.name.startswith("."),
-        ))
+    def _collect_files() -> list[FileInfo]:
+        result = []
+        for f in sorted(project_dir.iterdir()):
+            if not f.is_file():
+                continue
+            stat = f.stat()
+            result.append(FileInfo(
+                name=f.name,
+                type=get_file_type(f.name),
+                size=stat.st_size,
+                mtime=stat.st_mtime,
+                is_hidden=f.name.startswith("."),
+            ))
+        return result
 
-    return files
+    return await asyncio.to_thread(_collect_files)
 
 
 @router.get("/{project_id}/{filename}/text")
 async def get_file_text(project_id: str, filename: str) -> TextContent:
     """Read a text file and return its content as JSON."""
-    file_path = (DATA_DIR / project_id / filename).resolve()
-    if not file_path.is_relative_to(DATA_DIR / project_id):
-        raise HTTPException(status_code=400, detail="Invalid filename")
+    file_path = _resolve_project_file(project_id, filename)
     if not file_path.exists():
         raise HTTPException(status_code=404, detail="File not found")
-    file_size = file_path.stat().st_size
+    file_size = await asyncio.to_thread(lambda: file_path.stat().st_size)
     if file_size > MAX_TEXT_FILE_SIZE:
         raise HTTPException(
             status_code=400,
@@ -94,7 +100,7 @@ async def get_file_text(project_id: str, filename: str) -> TextContent:
 @router.get("/{project_id}/{filename}")
 async def get_file(project_id: str, filename: str):
     """Get a file from a project."""
-    file_path = DATA_DIR / project_id / filename
+    file_path = _resolve_project_file(project_id, filename)
     if not file_path.exists():
         raise HTTPException(status_code=404, detail="File not found")
 
@@ -104,33 +110,28 @@ async def get_file(project_id: str, filename: str):
 @router.post("/{project_id}/{filename}")
 async def upload_file(project_id: str, filename: str, file: UploadFile = File(...)):
     """Upload a file to a project."""
-    project_dir = DATA_DIR / project_id
-    if not project_dir.exists():
+    file_path = _resolve_project_file(project_id, filename)
+    if not file_path.parent.exists():
         raise HTTPException(status_code=404, detail="Project not found")
 
-    file_path = project_dir / filename
     content = await file.read()
-    with open(file_path, "wb") as f:
-        f.write(content)
+    await asyncio.to_thread(file_path.write_bytes, content)
 
     return {"status": "uploaded", "filename": filename}
 
 
 class SaveFileRequest(BaseModel):
-    """Save file request body."""
     content: str
 
 
 @router.put("/{project_id}/{filename}")
 async def save_file(project_id: str, filename: str, request: SaveFileRequest):
     """Save text content to a file."""
-    project_dir = DATA_DIR / project_id
-    if not project_dir.exists():
+    file_path = _resolve_project_file(project_id, filename)
+    if not file_path.parent.exists():
         raise HTTPException(status_code=404, detail="Project not found")
 
-    file_path = project_dir / filename
-    with open(file_path, "w") as f:
-        f.write(request.content)
+    await asyncio.to_thread(file_path.write_text, request.content)
 
     return {"status": "saved", "filename": filename}
 
@@ -138,9 +139,9 @@ async def save_file(project_id: str, filename: str, request: SaveFileRequest):
 @router.delete("/{project_id}/{filename}")
 async def delete_file(project_id: str, filename: str):
     """Delete a file from a project."""
-    file_path = DATA_DIR / project_id / filename
+    file_path = _resolve_project_file(project_id, filename)
     if not file_path.exists():
         raise HTTPException(status_code=404, detail="File not found")
 
-    file_path.unlink()
+    await asyncio.to_thread(file_path.unlink)
     return {"status": "deleted", "filename": filename}
