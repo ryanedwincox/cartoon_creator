@@ -1,9 +1,9 @@
 <!-- ProjectView: Agent chat and files interface for a single project. -->
 <script setup lang="ts">
-import { ref, onMounted } from 'vue'
+import { ref, provide, onMounted, computed } from 'vue'
 import { useRouter } from 'vue-router'
 import { useProjects, type Project } from '../composables/useProjects'
-import { type FileType } from '../composables/useFiles'
+import { useFiles, FilesKey, VIEWABLE_TYPES, type FileType, type FileInfo } from '../composables/useFiles'
 import ChatPanel from '../components/ChatPanel.vue'
 import FilesPanel from '../components/FilesPanel.vue'
 import ImageViewer from '../components/ImageViewer.vue'
@@ -16,6 +16,9 @@ const props = defineProps<{
 
 const router = useRouter()
 const { getProject } = useProjects()
+const filesContext = useFiles(props.id)
+provide(FilesKey, filesContext)
+const { files, loadFiles } = filesContext
 
 const project = ref<Project | null>(null)
 const activeTab = ref<'chat' | 'files'>('chat')
@@ -24,9 +27,15 @@ const viewingImageMtime = ref<number | null>(null)
 const viewingText = ref<string | null>(null)
 const editingSvg = ref<string | null>(null)
 
+/** Viewable (non-hidden) files in display order, used for swipe navigation. */
+const viewableFiles = computed<FileInfo[]>(() =>
+  files.value.filter((f) => !f.is_hidden && VIEWABLE_TYPES.includes(f.type)),
+)
+
 onMounted(async () => {
   try {
     project.value = await getProject(props.id)
+    await loadFiles()
   } catch (e) {
     console.error('Failed to load project', e)
     router.replace('/')
@@ -45,6 +54,38 @@ const handleFileClick = (filename: string, type: FileType, mtime: number) => {
     editingSvg.value = filename
   } else if (type === 'txt' || type === 'json') {
     viewingText.value = filename
+  }
+}
+
+/** Open the file at the given offset relative to the currently-viewed file. */
+const navigateFile = (direction: -1 | 1) => {
+  const currentName = viewingImage.value ?? viewingText.value ?? editingSvg.value
+  if (!currentName) return
+
+  const list = viewableFiles.value
+  const idx = list.findIndex((f) => f.name === currentName)
+  if (idx === -1) return
+
+  const nextIdx = idx + direction
+  if (nextIdx < 0 || nextIdx >= list.length) return
+
+  const next = list[nextIdx]
+  if (!next) return
+
+  // Clear all viewers
+  viewingImage.value = null
+  viewingImageMtime.value = null
+  viewingText.value = null
+  editingSvg.value = null
+
+  // Open next directly
+  if (next.type === 'png') {
+    viewingImage.value = next.name
+    viewingImageMtime.value = next.mtime
+  } else if (next.type === 'svg') {
+    editingSvg.value = next.name
+  } else if (next.type === 'txt' || next.type === 'json') {
+    viewingText.value = next.name
   }
 }
 </script>
@@ -69,7 +110,6 @@ const handleFileClick = (filename: string, type: FileType, mtime: number) => {
       />
       <FilesPanel
         v-else
-        :project-id="id"
         @file-click="handleFileClick"
       />
     </div>
@@ -105,14 +145,15 @@ const handleFileClick = (filename: string, type: FileType, mtime: number) => {
       :filename="viewingImage"
       :mtime="viewingImageMtime"
       @close="viewingImage = null"
+      @navigate="navigateFile"
     />
 
     <!-- Text Viewer -->
     <TextViewer
       v-if="viewingText"
-      :project-id="id"
       :filename="viewingText"
       @close="viewingText = null"
+      @navigate="navigateFile"
     />
 
     <!-- SVG Editor -->

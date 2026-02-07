@@ -1,22 +1,27 @@
-<!-- TextViewer: Full-screen modal for viewing text file contents. -->
+<!-- TextViewer: Full-screen modal for viewing text file contents with swipe navigation. -->
 <script setup lang="ts">
 import { ref, onMounted } from 'vue'
-import { useFiles } from '../composables/useFiles'
+import { useInjectedFiles } from '../composables/useFiles'
+import { useSwipeNavigation } from '../composables/useSwipeNavigation'
 
 const props = defineProps<{
-  projectId: string
   filename: string
 }>()
 
 const emit = defineEmits<{
   close: []
+  navigate: [direction: -1 | 1]
 }>()
 
-const { getFileText } = useFiles(props.projectId)
+const { getFileText } = useInjectedFiles()
 
 const content = ref('')
 const loading = ref(true)
 const error = ref<string>()
+
+const { handleTouchStart, handleTouchMove, handleTouchEnd } = useSwipeNavigation(
+  (dir) => emit('navigate', dir),
+)
 
 onMounted(async () => {
   try {
@@ -42,7 +47,12 @@ onMounted(async () => {
       <span />
     </header>
 
-    <div class="text-viewer-content">
+    <div
+      class="text-viewer-content"
+      @touchstart="handleTouchStart"
+      @touchmove="handleTouchMove"
+      @touchend="handleTouchEnd"
+    >
       <div v-if="loading" class="status">Loading...</div>
       <div v-else-if="error" class="status error">{{ error }}</div>
       <pre v-else class="text-content">{{ content }}</pre>

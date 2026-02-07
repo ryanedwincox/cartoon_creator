@@ -1,6 +1,7 @@
 <!-- ImageViewer: Full-screen zoomable image viewer with pinch/scroll zoom and pan. -->
 <script setup lang="ts">
 import { ref, computed, onMounted, onUnmounted } from 'vue'
+import { useSwipeNavigation } from '../composables/useSwipeNavigation'
 
 const props = defineProps<{
   projectId: string
@@ -10,6 +11,7 @@ const props = defineProps<{
 
 const emit = defineEmits<{
   close: []
+  navigate: [direction: -1 | 1]
 }>()
 
 const DATA_BASE = '/data'
@@ -28,6 +30,14 @@ const isDragging = ref(false)
 const lastX = ref(0)
 const lastY = ref(0)
 
+const {
+  handleTouchStart: swipeTouchStart,
+  handleTouchMove: swipeTouchMove,
+  handleTouchEnd: swipeTouchEnd,
+} = useSwipeNavigation((dir) => emit('navigate', dir), {
+  enabledWhen: () => scale.value <= 1,
+})
+
 const containerRef = ref<HTMLElement | null>(null)
 
 const handleTouchStart = (e: TouchEvent) => {
@@ -38,10 +48,14 @@ const handleTouchStart = (e: TouchEvent) => {
     initialDistance.value = Math.sqrt(dx * dx + dy * dy)
     initialScale.value = scale.value
   } else if (e.touches.length === 1) {
-    // Pan start
-    isDragging.value = true
-    lastX.value = e.touches[0].clientX
-    lastY.value = e.touches[0].clientY
+    if (scale.value <= 1) {
+      swipeTouchStart(e)
+    } else {
+      // Pan start (zoomed in)
+      isDragging.value = true
+      lastX.value = e.touches[0].clientX
+      lastY.value = e.touches[0].clientY
+    }
   }
 }
 
@@ -53,6 +67,8 @@ const handleTouchMove = (e: TouchEvent) => {
     const distance = Math.sqrt(dx * dx + dy * dy)
     const newScale = initialScale.value * (distance / initialDistance.value)
     scale.value = Math.min(Math.max(0.5, newScale), 5)
+  } else if (e.touches.length === 1 && scale.value <= 1) {
+    swipeTouchMove(e)
   } else if (e.touches.length === 1 && isDragging.value && scale.value > 1) {
     // Pan
     const dx = e.touches[0].clientX - lastX.value
@@ -65,6 +81,7 @@ const handleTouchMove = (e: TouchEvent) => {
 }
 
 const handleTouchEnd = () => {
+  swipeTouchEnd()
   isDragging.value = false
 }
 

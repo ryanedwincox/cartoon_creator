@@ -1,26 +1,18 @@
 <!-- FilesPanel: Displays project file list with icons, sizes, and click-to-open. -->
 <script setup lang="ts">
-import { computed, onMounted, ref } from 'vue'
-import { useFiles, type FileType } from '../composables/useFiles'
-
-const props = defineProps<{
-  projectId: string
-}>()
+import { computed, ref } from 'vue'
+import { useInjectedFiles, type FileType } from '../composables/useFiles'
 
 const emit = defineEmits<{
   'file-click': [filename: string, type: FileType, mtime: number]
 }>()
 
-const { files, loading, uploading, loadFiles, uploadFile } = useFiles(props.projectId)
+const { files, loading, uploading, uploadFile } = useInjectedFiles()
 
 const fileInput = ref<HTMLInputElement | null>(null)
 const uploadError = ref<string>()
 
 const visibleFiles = computed(() => files.value.filter((f) => !f.is_hidden))
-
-onMounted(() => {
-  loadFiles()
-})
 
 const getIcon = (type: FileType): string => {
   switch (type) {

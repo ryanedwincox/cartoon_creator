@@ -1,10 +1,12 @@
 // useFiles: Composable for project file operations (list, read, save, delete). NOT concerned with: file display or UI.
-import { ref } from 'vue'
+import { inject, ref, type InjectionKey } from 'vue'
 
 const API_BASE = '/api'
 const DATA_BASE = '/data'
 
 export type FileType = 'png' | 'svg' | 'json' | 'txt' | 'other'
+
+export const VIEWABLE_TYPES: FileType[] = ['png', 'svg', 'txt', 'json']
 
 export interface FileInfo {
   name: string
@@ -12,6 +14,14 @@ export interface FileInfo {
   size: number
   mtime: number
   is_hidden: boolean
+}
+
+export const FilesKey: InjectionKey<ReturnType<typeof useFiles>> = Symbol('files')
+
+export function useInjectedFiles(): ReturnType<typeof useFiles> {
+  const ctx = inject(FilesKey)
+  if (!ctx) throw new Error('useInjectedFiles requires a provider ancestor using FilesKey')
+  return ctx
 }
 
 export function useFiles(projectId: string) {
