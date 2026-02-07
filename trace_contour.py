@@ -22,7 +22,6 @@ class Args:
     input_path: Path
     output_path: Path
     tolerance: float
-    debug: bool
     fill_color: str | None
 
 
@@ -30,7 +29,7 @@ def parse_args(argv: list[str]) -> Args:
     if len(argv) < 2:
         print(
             f"Usage: {argv[0]} <input.png> [output.svg]"
-            f" [--tolerance N] [--fill [COLOR]] [--debug]",
+            f" [--tolerance N] [--fill [COLOR]]",
             file=sys.stderr,
         )
         sys.exit(2)
@@ -39,7 +38,6 @@ def parse_args(argv: list[str]) -> Args:
     input_path = Path(args[0])
     output_path: Path | None = None
     tolerance = DEFAULT_TOLERANCE
-    debug = False
     fill_color: str | None = None
 
     i = 1
@@ -54,9 +52,6 @@ def parse_args(argv: list[str]) -> Args:
             else:
                 fill_color = DEFAULT_FILL_COLOR
                 i += 1
-        elif args[i] == "--debug":
-            debug = True
-            i += 1
         elif args[i].startswith("--"):
             print(f"Unknown flag: {args[i]}", file=sys.stderr)
             sys.exit(2)
@@ -74,22 +69,8 @@ def parse_args(argv: list[str]) -> Args:
         input_path=input_path,
         output_path=output_path,
         tolerance=tolerance,
-        debug=debug,
         fill_color=fill_color,
     )
-
-
-def save_debug_image(debug_dir: Path, step: int, name: str, array: np.ndarray) -> None:
-    if array.dtype == bool:
-        img = Image.fromarray((~array).astype(np.uint8) * 255, mode="L")
-    elif array.ndim == 3:
-        img = Image.fromarray(array.astype(np.uint8), mode="RGB")
-    else:
-        img = Image.fromarray(array.astype(np.uint8), mode="L")
-
-    filename = f"{step:02d}_{name}.png"
-    img.save(debug_dir / filename)
-    print(f"  Debug: saved {filename}")
 
 
 def simplify_contours(binary: np.ndarray, tolerance: float) -> list[np.ndarray]:
@@ -149,27 +130,21 @@ def write_svg(
         )
         f.write(f'  <rect width="{w}" height="{h}" fill="white"/>\n')
 
+        f.write(
+            f'  <path d="{ink_d}" fill="black" fill-rule="evenodd"/>\n'
+        )
+
         if fill_paths and fill_color:
             fill_d = " ".join(fill_paths)
             f.write(
                 f'  <path d="{fill_d}" fill="{fill_color}"'
                 f' fill-rule="evenodd"/>\n'
             )
-
-        f.write(
-            f'  <path d="{ink_d}" fill="black" fill-rule="evenodd"/>\n'
-        )
         f.write("</svg>\n")
 
 
 def main() -> None:
     cfg = parse_args(sys.argv)
-
-    debug_dir: Path | None = None
-    if cfg.debug:
-        debug_dir = cfg.input_path.with_name(cfg.input_path.stem + "_debug")
-        debug_dir.mkdir(parents=True, exist_ok=True)
-        print(f"Debug images → {debug_dir}/")
 
     # --- Step 1: Load and threshold ---
     img = Image.open(cfg.input_path).convert("L")
@@ -180,9 +155,6 @@ def main() -> None:
     binary = arr < BINARY_THRESHOLD
     print(f"Dark pixels: {np.sum(binary)}")
 
-    if debug_dir:
-        save_debug_image(debug_dir, 1, "binary", binary)
-
     # --- Step 2: Find and simplify ink contours ---
     contours_raw = find_contours(binary.astype(float), CONTOUR_LEVEL)
     print(f"Found {len(contours_raw)} raw contours ({sum(len(c) for c in contours_raw)} points)")
@@ -190,14 +162,6 @@ def main() -> None:
     contours = simplify_contours(binary, cfg.tolerance)
     total_simp_pts = sum(len(c) for c in contours)
     print(f"After simplification: {len(contours)} contours ({total_simp_pts} points)")
-
-    if debug_dir:
-        overlay = np.stack([arr.astype(np.uint8)] * 3, axis=-1)
-        for c in contours:
-            rows = np.clip(c[:, 0].astype(int), 0, h - 1)
-            cols = np.clip(c[:, 1].astype(int), 0, w - 1)
-            overlay[rows, cols] = [255, 0, 0]
-        save_debug_image(debug_dir, 2, "contours", overlay)
 
     # --- Step 3: Find enclosed regions (optional fill) ---
     fill_paths: list[str] = []
@@ -211,12 +175,6 @@ def main() -> None:
                 fill_paths.append(contour_to_svg_subpath(rc))
 
         print(f"Fill paths: {len(fill_paths)}")
-
-        if debug_dir:
-            combined = np.zeros(binary.shape, dtype=np.uint8)
-            for idx, region_mask in enumerate(regions):
-                combined[region_mask] = 128 + (idx * 37) % 128
-            save_debug_image(debug_dir, 3, "enclosed_regions", combined)
 
     # --- Step 4: Write SVG ---
     if not contours:

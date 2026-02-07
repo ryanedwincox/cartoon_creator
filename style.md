@@ -15,3 +15,7 @@ A cat. Round, chunky body. Dot eyes, tiny dot nose. Simple rounded ear outlines.
 ## Ryan
 
 A man in his 30s. Wears pants, a sweater, and a baseball hat. Same ultra-minimal style as all other characters.
+
+## Helen 
+
+Woman in 30s pants and simple shirt with curl black hair down to neck
