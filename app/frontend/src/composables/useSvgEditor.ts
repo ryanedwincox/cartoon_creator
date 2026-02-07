@@ -10,7 +10,16 @@ export interface Point {
   y: number
 }
 
-export interface PathData {
+export type FillRule = 'nonzero' | 'evenodd'
+
+export interface PathStyle {
+  fill: string
+  fillRule: FillRule
+  stroke: string
+  strokeWidth: number
+}
+
+export interface PathData extends PathStyle {
   id: string
   d: string
   layer: Layer
@@ -48,7 +57,7 @@ const MIN_ZOOM = 0.25
 const MAX_ZOOM = 4
 const FIT_VIEW_FILL_RATIO = 0.9
 const DEFAULT_FONT_SIZE = 14
-const DEFAULT_FONT_FAMILY = 'Comic Sans MS, cursive'
+const DEFAULT_FONT_FAMILY = 'sans-serif'
 
 export function useSvgEditor() {
   const currentTool = ref<Tool>('select')
@@ -132,12 +141,16 @@ export function useSvgEditor() {
 
   const generateId = () => `${Date.now()}-${Math.random().toString(36).slice(2, 8)}`
 
-  const addPath = (d: string) => {
+  const addPath = (d: string, attrs?: Partial<PathStyle>) => {
     saveState()
     paths.value.push({
       id: generateId(),
       d,
       layer: 'art',
+      fill: attrs?.fill ?? 'none',
+      fillRule: attrs?.fillRule ?? 'nonzero',
+      stroke: attrs?.stroke ?? 'black',
+      strokeWidth: attrs?.strokeWidth ?? 2,
     })
   }
 
@@ -294,7 +307,16 @@ export function useSvgEditor() {
     // Art layer
     svg += `  <g id="art-layer">\n`
     for (const path of artPaths) {
-      svg += `    <path d="${path.d}" stroke="black" stroke-width="2" fill="none" stroke-linecap="round" stroke-linejoin="round"/>\n`
+      const attrs = [
+        `d="${escapeXml(path.d)}"`,
+        `fill="${escapeXml(path.fill)}"`,
+        `fill-rule="${escapeXml(path.fillRule)}"`,
+        `stroke="${escapeXml(path.stroke)}"`,
+        `stroke-width="${path.strokeWidth}"`,
+        `stroke-linecap="round"`,
+        `stroke-linejoin="round"`,
+      ]
+      svg += `    <path ${attrs.join(' ')}/>\n`
     }
     svg += `  </g>\n`
 
@@ -342,10 +364,22 @@ export function useSvgEditor() {
     for (const pathEl of pathElements) {
       const d = pathEl.getAttribute('d')
       if (d) {
+        const fill = pathEl.getAttribute('fill') || 'none'
+        const fillRuleAttr = pathEl.getAttribute('fill-rule')
+        const fillRule: FillRule = fillRuleAttr === 'evenodd' ? 'evenodd' : 'nonzero'
+        const strokeAttr = pathEl.getAttribute('stroke')
+        const stroke = strokeAttr ?? (fill !== 'none' ? 'none' : 'black')
+        const rawStrokeWidth = parseFloat(pathEl.getAttribute('stroke-width') || '')
+        const strokeWidth = Number.isNaN(rawStrokeWidth) ? 2 : rawStrokeWidth
+
         paths.value.push({
           id: generateId(),
           d,
           layer: 'art',
+          fill,
+          fillRule,
+          stroke,
+          strokeWidth,
         })
       }
     }
