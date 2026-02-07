@@ -55,8 +55,20 @@ def save_conversation(project_id: str, messages: list[ChatMessage]) -> None:
         json.dump([m.model_dump() for m in messages], f, indent=2)
 
 
+def _load_reference_doc(path: Path) -> str:
+    try:
+        return path.read_text()
+    except OSError:
+        logger.warning("Reference doc not found: %s", path)
+        return ""
+
+
+# Static reference docs — read once at import, not per request
+_STYLE_GUIDE = _load_reference_doc(CARTOONS_DIR / "style.md")
+_WORKFLOW_GUIDE = _load_reference_doc(CARTOONS_DIR / "comic-creation-workflow.md")
+
+
 def build_agent_prompt(project_id: str, messages: list[ChatMessage], new_message: str) -> str:
-    """Build the prompt for the agent."""
     project_dir = DATA_DIR / project_id
 
     # System context
@@ -65,18 +77,21 @@ def build_agent_prompt(project_id: str, messages: list[ChatMessage], new_message
 Working directory: {project_dir}
 
 Available tools:
-- python {CARTOONS_DIR}/generate_cartoon.py --prompt "description" --output panel.png
-  Generates a cartoon image using Gemini API
+- python {CARTOONS_DIR}/generate_cartoon.py "description" panel1.png
+  Generates a cartoon image using Gemini API. Do not include text in the prompt unless explicitly asked.
 
-- python {CARTOONS_DIR}/trace_centerline.py input.png output.svg
-  Converts PNG to SVG using centerline tracing
+- python {CARTOONS_DIR}/trace_contour.py input.png output.svg
+  Converts PNG to SVG using contour tracing
 
-Style guide: {CARTOONS_DIR}/style.md
+## Style Guide
 
-When generating images:
-1. Use descriptive prompts based on user requests
-2. Save files with meaningful names (panel1.png, etc.)
-3. After generating PNG, offer to convert to SVG if desired
+{_STYLE_GUIDE}
+
+## Comic Creation Workflow
+
+{_WORKFLOW_GUIDE}
+
+Follow the comic creation workflow above when the user asks you to create a comic.
 
 Current conversation:
 """
