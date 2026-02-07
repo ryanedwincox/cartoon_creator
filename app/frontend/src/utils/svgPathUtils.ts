@@ -1,4 +1,4 @@
-// SVG path string utilities. Responsible for parsing and transforming SVG path `d` attribute strings. NOT concerned with rendering, DOM, or editor state. | I/O: (d, dx, dy) → translated d string
+// SVG path string utilities. Responsible for parsing and transforming SVG path `d` attribute strings and polygon geometry. NOT concerned with rendering, DOM, or editor state.
 
 /**
  * Translate all absolute coordinate values in an SVG path `d` string by (dx, dy).
@@ -112,4 +112,53 @@ export function translatePathD(d: string, dx: number, dy: number): string {
   }
 
   return result.join(' ')
+}
+
+export interface TailPoint {
+  tipX: number
+  tipY: number
+  baseX: number
+  baseY: number
+}
+
+export function parseTailFromPolygon(
+  pointsStr: string,
+  rectX: number,
+  rectY: number,
+  rectW: number,
+  rectH: number,
+): TailPoint | null {
+  const pairs = pointsStr.trim().split(/\s+/)
+  if (pairs.length !== 3) return null
+
+  const coords: Array<{ x: number; y: number }> = []
+  for (const pair of pairs) {
+    const parts = pair.split(',')
+    const x = Number(parts[0])
+    const y = Number(parts[1])
+    if (isNaN(x) || isNaN(y)) return null
+    coords.push({ x, y })
+  }
+
+  const cx = rectX + rectW / 2
+  const cy = rectY + rectH / 2
+
+  // The tip is the point farthest from the bubble center
+  let maxDist = -1
+  let tipIdx = 0
+  for (let i = 0; i < coords.length; i++) {
+    const pt = coords[i]!
+    const dist = (pt.x - cx) ** 2 + (pt.y - cy) ** 2
+    if (dist > maxDist) {
+      maxDist = dist
+      tipIdx = i
+    }
+  }
+
+  const tip = coords[tipIdx]!
+  const bases = coords.filter((_, i) => i !== tipIdx)
+  const baseMidX = bases.reduce((s, p) => s + p.x, 0) / bases.length
+  const baseMidY = bases.reduce((s, p) => s + p.y, 0) / bases.length
+
+  return { tipX: tip.x, tipY: tip.y, baseX: baseMidX, baseY: baseMidY }
 }

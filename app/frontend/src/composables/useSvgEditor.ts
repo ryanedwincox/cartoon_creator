@@ -1,6 +1,6 @@
 // [Composable]: SVG editor state and operations. Responsible for canvas state, path/bubble/text CRUD, undo/redo, import/export, zoom/pan. NOT concerned with DOM event handling or rendering.
 import { ref, reactive, computed } from 'vue'
-import { translatePathD } from '../utils/svgPathUtils'
+import { translatePathD, parseTailFromPolygon } from '../utils/svgPathUtils'
 
 export type Tool = 'select' | 'node' | 'draw' | 'erase' | 'bubble' | 'text'
 export type Layer = 'art' | 'bubbles' | 'text'
@@ -384,29 +384,96 @@ export function useSvgEditor() {
       }
     }
 
-    // Import standalone text elements from text-layer (exclude bubble text identified by centered alignment)
+    // Import bubbles from bubbles-layer
+    const bubblesLayer = doc.getElementById('bubbles-layer')
+    if (bubblesLayer) {
+      // Find rounded rects (bubble bodies) — identified by having rx or ry attributes
+      const rectEls = bubblesLayer.querySelectorAll('rect[rx], rect[ry]')
+      const polygonEls = bubblesLayer.querySelectorAll('polygon')
+
+      for (const rectEl of rectEls) {
+        const bx = parseFloat(rectEl.getAttribute('x') || '0')
+        const by = parseFloat(rectEl.getAttribute('y') || '0')
+        const bw = parseFloat(rectEl.getAttribute('width') || '0')
+        const bh = parseFloat(rectEl.getAttribute('height') || '0')
+        if (bw <= 0 || bh <= 0) continue
+        const centerX = bx + bw / 2
+        const centerY = by + bh / 2
+
+        // Find the closest polygon tail for this bubble rect
+        let tailX = centerX
+        let tailY = by + bh + 40
+        let bestDist = Infinity
+
+        for (const polyEl of polygonEls) {
+          const tailPt = parseTailFromPolygon(polyEl.getAttribute('points') || '', bx, by, bw, bh)
+          if (!tailPt) continue
+          const dist = Math.sqrt((tailPt.baseX - centerX) ** 2 + (tailPt.baseY - centerY) ** 2)
+          if (dist < bestDist) {
+            bestDist = dist
+            tailX = tailPt.tipX
+            tailY = tailPt.tipY
+          }
+        }
+
+        bubbles.value.push({
+          id: generateId(),
+          x: bx,
+          y: by,
+          width: bw,
+          height: bh,
+          tailX,
+          tailY,
+          text: '',
+          layer: 'bubbles',
+        })
+      }
+    }
+
+    // Import text elements from text-layer, associating centered text with bubbles
     const textLayer = doc.getElementById('text-layer')
     if (textLayer) {
       const textElements = textLayer.querySelectorAll('text')
       for (const textEl of textElements) {
-        const isBubbleText = textEl.getAttribute('text-anchor') === 'middle'
-          && textEl.getAttribute('dominant-baseline') === 'middle'
-        if (isBubbleText) continue
-
+        const isCenteredText = textEl.getAttribute('text-anchor') === 'middle'
         const x = parseFloat(textEl.getAttribute('x') || '0')
         const y = parseFloat(textEl.getAttribute('y') || '0')
-        const fontSize = parseFloat(textEl.getAttribute('font-size') || String(DEFAULT_FONT_SIZE))
-        const content = textEl.textContent || ''
-        if (content) {
-          texts.value.push({
-            id: generateId(),
-            x,
-            y,
-            content,
-            fontSize,
-            layer: 'text',
-          })
+        const content = textEl.textContent?.trim() || ''
+        if (!content) continue
+
+        // Try to match centered text to the closest bubble by proximity to bubble center
+        if (isCenteredText && bubbles.value.length > 0) {
+          let bestBubble: BubbleData | null = null
+          let bestDist = Infinity
+          for (const bubble of bubbles.value) {
+            const cx = bubble.x + bubble.width / 2
+            const cy = bubble.y + bubble.height / 2
+            const dx = Math.abs(x - cx)
+            const dy = Math.abs(y - cy)
+            // Only consider if text is within the bubble bounds
+            if (dx < bubble.width / 2 && dy < bubble.height / 2) {
+              const dist = dx * dx + dy * dy
+              if (dist < bestDist) {
+                bestDist = dist
+                bestBubble = bubble
+              }
+            }
+          }
+          if (bestBubble) {
+            bestBubble.text = content
+            continue
+          }
         }
+
+        const fontSize = parseFloat(textEl.getAttribute('font-size') || String(DEFAULT_FONT_SIZE))
+        texts.value.push({
+          id: generateId(),
+          x,
+          y,
+          content,
+          fontSize,
+          layer: 'text',
+        })
       }
     }
 
