@@ -11,7 +11,8 @@
 |  |    <path .selected? />...                   |         |
 |  |                                             |         |
 |  |  [#bubbles-layer]                           |         |
-|  |    <polygon tail /> + <rect rounded />...   |         |
+|  |    <rect rounded /> + <path tail /> +       |         |
+|  |    <rect seam-cover />...                   |         |
 |  |                                             |         |
 |  |  [#text-layer]                              |         |
 |  |    <text bubble-text />...                  |         |
@@ -47,7 +48,7 @@
 | viewport bg        | rect         | fill=#e5e7eb, covers viewBox                      | root    | always                          |
 | canvas             | rect         | white fill, stroke=#d1d5db                        | root    | always                          |
 | path               | path         | per PathData, .selected highlight                 | art     | v-show layerVisibility.art      |
-| bubble group       | g > polygon+rect | tail polygon + rounded rect                  | bubbles | v-show layerVisibility.bubbles  |
+| bubble group       | g > rect+path+rect | rounded rect + tail path + seam cover rect | bubbles | v-show layerVisibility.bubbles  |
 | bubble text        | text         | centered in bubble rect                           | text    | v-show layerVisibility.text     |
 | standalone text    | text / foreignObject | inline editing via foreignObject          | text    | v-show layerVisibility.text     |
 | drawing preview    | path         | opacity=0.5, current stroke                      | overlay | isDrawing && currentPathD       |

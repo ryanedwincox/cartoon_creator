@@ -390,6 +390,66 @@ export interface TailPoint {
   baseY: number
 }
 
+/**
+ * Identify the tail tip (farthest from bubble center) from 3 triangle vertices.
+ * Returns TailPoint with tip coordinates and base midpoint.
+ */
+function tailPointFromTriangle(
+  coords: Array<{ x: number; y: number }>,
+  rectX: number,
+  rectY: number,
+  rectW: number,
+  rectH: number,
+): TailPoint {
+  const cx = rectX + rectW / 2
+  const cy = rectY + rectH / 2
+
+  let maxDist = -1
+  let tipIdx = 0
+  for (let i = 0; i < coords.length; i++) {
+    const pt = coords[i]!
+    const dist = (pt.x - cx) ** 2 + (pt.y - cy) ** 2
+    if (dist > maxDist) {
+      maxDist = dist
+      tipIdx = i
+    }
+  }
+
+  const tip = coords[tipIdx]!
+  const bases = coords.filter((_, i) => i !== tipIdx)
+  const baseMidX = bases.reduce((s, p) => s + p.x, 0) / bases.length
+  const baseMidY = bases.reduce((s, p) => s + p.y, 0) / bases.length
+
+  return { tipX: tip.x, tipY: tip.y, baseX: baseMidX, baseY: baseMidY }
+}
+
+/**
+ * Parse a tail triangle from a `<path d="M x1 y1 L x2 y2 L x3 y3">` element.
+ * Identifies the tip as the point farthest from the bubble center.
+ */
+export function parseTailFromPath(
+  d: string,
+  rectX: number,
+  rectY: number,
+  rectW: number,
+  rectH: number,
+): TailPoint | null {
+  // Match "M x1 y1 L x2 y2 L x3 y3" pattern (3 absolute points)
+  const re = /M\s*([+-]?[\d.]+)[,\s]+([+-]?[\d.]+)\s*L\s*([+-]?[\d.]+)[,\s]+([+-]?[\d.]+)\s*L\s*([+-]?[\d.]+)[,\s]+([+-]?[\d.]+)/i
+  const match = d.match(re)
+  if (!match) return null
+
+  const coords = [
+    { x: parseFloat(match[1]!), y: parseFloat(match[2]!) },
+    { x: parseFloat(match[3]!), y: parseFloat(match[4]!) },
+    { x: parseFloat(match[5]!), y: parseFloat(match[6]!) },
+  ]
+
+  if (coords.some(c => isNaN(c.x) || isNaN(c.y))) return null
+
+  return tailPointFromTriangle(coords, rectX, rectY, rectW, rectH)
+}
+
 export function parseTailFromPolygon(
   pointsStr: string,
   rectX: number,
@@ -409,25 +469,5 @@ export function parseTailFromPolygon(
     coords.push({ x, y })
   }
 
-  const cx = rectX + rectW / 2
-  const cy = rectY + rectH / 2
-
-  // The tip is the point farthest from the bubble center
-  let maxDist = -1
-  let tipIdx = 0
-  for (let i = 0; i < coords.length; i++) {
-    const pt = coords[i]!
-    const dist = (pt.x - cx) ** 2 + (pt.y - cy) ** 2
-    if (dist > maxDist) {
-      maxDist = dist
-      tipIdx = i
-    }
-  }
-
-  const tip = coords[tipIdx]!
-  const bases = coords.filter((_, i) => i !== tipIdx)
-  const baseMidX = bases.reduce((s, p) => s + p.x, 0) / bases.length
-  const baseMidY = bases.reduce((s, p) => s + p.y, 0) / bases.length
-
-  return { tipX: tip.x, tipY: tip.y, baseX: baseMidX, baseY: baseMidY }
+  return tailPointFromTriangle(coords, rectX, rectY, rectW, rectH)
 }

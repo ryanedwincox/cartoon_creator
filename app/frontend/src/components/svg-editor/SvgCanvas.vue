@@ -54,6 +54,15 @@ const initialPinchDistance = ref(0)
 const initialPinchZoom = ref(1)
 const lastTouchMidpoint = ref<Point>({ x: 0, y: 0 })
 
+/** Pre-computed tail render data keyed by bubble id — avoids redundant geometry in template. */
+const bubbleTailData = computed(() => {
+  const map = new Map<string, ReturnType<typeof editor.bubbleTailRender>>()
+  for (const bubble of editor.bubbles.value) {
+    map.set(bubble.id, editor.bubbleTailRender(bubble))
+  }
+  return map
+})
+
 const viewBox = computed(() => {
   const x = -editor.panX.value / editor.zoom.value
   const y = -editor.panY.value / editor.zoom.value
@@ -745,7 +754,7 @@ const cursorStyle = computed(() => {
       />
     </g>
 
-    <!-- Bubbles layer -->
+    <!-- Bubbles layer — style.md order: rect, tail path, seam cover -->
     <g v-show="editor.layerVisibility.bubbles" id="bubbles-layer">
       <g
         v-for="bubble in editor.bubbles.value"
@@ -756,24 +765,34 @@ const cursorStyle = computed(() => {
         @mousedown="handleElementMouseDown(bubble.id, $event)"
         @touchstart="handleElementTouchStart(bubble.id, $event)"
       >
-        <!-- Tail (behind rect so rect covers the base) -->
-        <polygon
-          :points="editor.bubbleTailPoints(bubble)"
-          stroke="black"
-          stroke-width="2"
-          fill="white"
-        />
         <!-- Rounded rectangle -->
         <rect
           :x="bubble.x"
           :y="bubble.y"
           :width="bubble.width"
           :height="bubble.height"
-          rx="20"
-          ry="20"
+          :rx="bubble.rx ?? editor.DEFAULT_BUBBLE_RX"
+          :ry="bubble.ry ?? editor.DEFAULT_BUBBLE_RY"
           stroke="black"
-          stroke-width="2"
+          :stroke-width="bubble.strokeWidth ?? editor.DEFAULT_STROKE_WIDTH"
           fill="white"
+        />
+        <!-- Tail path (rendered after rect; seam cover hides overlap) -->
+        <path
+          :d="bubbleTailData.get(bubble.id)?.d"
+          fill="white"
+          stroke="black"
+          :stroke-width="bubble.strokeWidth ?? editor.DEFAULT_STROKE_WIDTH"
+          stroke-linejoin="round"
+        />
+        <!-- Seam cover: hides stroke overlap where tail meets bubble -->
+        <rect
+          :x="bubbleTailData.get(bubble.id)?.seamX"
+          :y="bubbleTailData.get(bubble.id)?.seamY"
+          :width="bubbleTailData.get(bubble.id)?.seamSize"
+          :height="bubbleTailData.get(bubble.id)?.seamSize"
+          fill="white"
+          stroke="none"
         />
       </g>
     </g>
@@ -788,8 +807,9 @@ const cursorStyle = computed(() => {
         :y="bubble.y + bubble.height / 2"
         text-anchor="middle"
         dominant-baseline="middle"
-        :font-family="editor.DEFAULT_FONT_FAMILY"
-        :font-size="editor.DEFAULT_FONT_SIZE"
+        :font-family="bubble.fontFamily ?? editor.DEFAULT_FONT_FAMILY"
+        :font-size="bubble.fontSize ?? editor.DEFAULT_FONT_SIZE"
+        :font-weight="bubble.fontWeight ?? editor.DEFAULT_FONT_WEIGHT"
         fill="black"
       >
         {{ bubble.text }}

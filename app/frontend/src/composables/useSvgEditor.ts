@@ -1,6 +1,6 @@
 // [Composable]: SVG editor state and operations. Responsible for canvas state, path/bubble/text CRUD, undo/redo, import/export, zoom/pan. NOT concerned with DOM event handling or rendering.
 import { ref, reactive, computed } from 'vue'
-import { translatePathD, parseTailFromPolygon, getPathBoundsFromD, scalePathD } from '../utils/svgPathUtils'
+import { translatePathD, parseTailFromPolygon, parseTailFromPath, getPathBoundsFromD, scalePathD } from '../utils/svgPathUtils'
 
 export type Tool = 'select' | 'node' | 'draw' | 'erase' | 'bubble' | 'text'
 export type Layer = 'art' | 'bubbles' | 'text'
@@ -35,6 +35,12 @@ export interface BubbleData {
   tailY: number
   text: string
   layer: 'bubbles'
+  strokeWidth?: number
+  rx?: number
+  ry?: number
+  fontSize?: number
+  fontFamily?: string
+  fontWeight?: string
 }
 
 export interface TextData {
@@ -56,8 +62,19 @@ const CANVAS_SIZE = 500
 const MIN_ZOOM = 0.25
 const MAX_ZOOM = 4
 const FIT_VIEW_FILL_RATIO = 0.9
-const DEFAULT_FONT_SIZE = 14
-const DEFAULT_FONT_FAMILY = 'sans-serif'
+const DEFAULT_FONT_SIZE = 48
+const DEFAULT_FONT_FAMILY = "'Anime Ace 2 BB', sans-serif"
+const DEFAULT_FONT_WEIGHT = 'bold'
+const DEFAULT_STROKE_WIDTH = 12
+const DEFAULT_BUBBLE_RX = 30
+const DEFAULT_BUBBLE_RY = 30
+const DEFAULT_BUBBLE_WIDTH = 200
+const DEFAULT_BUBBLE_HEIGHT = 100
+const DEFAULT_TAIL_OFFSET = 40
+const TAIL_BASE_WIDTH = 25
+const TAIL_BASE_NEAR_RATIO = 0.3
+const TAIL_BASE_FAR_RATIO = 0.7
+const SEAM_COVER_RATIO = 1.17 // seam cover size relative to stroke width (~14/12)
 const TEXT_BOUNDS_WIDTH_PER_CHAR = 0.6
 const TEXT_BOUNDS_MIN_WIDTH_CHARS = 2
 
@@ -175,14 +192,20 @@ export function useSvgEditor() {
 
     bubbles.value.push({
       id: generateId(),
-      x: centerX - 60,
-      y: centerY - 40,
-      width: 120,
-      height: 80,
-      tailX: centerX,
-      tailY: centerY + 60,
+      x: centerX - DEFAULT_BUBBLE_WIDTH / 2,
+      y: centerY - DEFAULT_BUBBLE_HEIGHT / 2,
+      width: DEFAULT_BUBBLE_WIDTH,
+      height: DEFAULT_BUBBLE_HEIGHT,
+      tailX: centerX + DEFAULT_BUBBLE_WIDTH / 2 + DEFAULT_TAIL_OFFSET,
+      tailY: centerY,
       text: '',
       layer: 'bubbles',
+      strokeWidth: DEFAULT_STROKE_WIDTH,
+      rx: DEFAULT_BUBBLE_RX,
+      ry: DEFAULT_BUBBLE_RY,
+      fontSize: DEFAULT_FONT_SIZE,
+      fontFamily: DEFAULT_FONT_FAMILY,
+      fontWeight: DEFAULT_FONT_WEIGHT,
     })
   }
 
@@ -239,12 +262,70 @@ export function useSvgEditor() {
     editingTextId.value = null
   }
 
-  /** SVG points string for a bubble's tail polygon. */
-  const bubbleTailPoints = (bubble: BubbleData): string => {
-    const base1X = bubble.x + bubble.width / 2 - 10
-    const base2X = bubble.x + bubble.width / 2 + 10
-    const baseY = bubble.y + bubble.height * 0.8
-    return `${base1X},${baseY} ${base2X},${baseY} ${bubble.tailX},${bubble.tailY}`
+  interface TailGeometry { base1X: number; base1Y: number; base2X: number; base2Y: number }
+
+  /** Compute which edge of the bubble the tail should attach to and return base point pairs. */
+  const computeTailGeometry = (bubble: BubbleData): TailGeometry => {
+    const hw = TAIL_BASE_WIDTH / 2
+    const bx = bubble.x
+    const by = bubble.y
+    const bw = bubble.width
+    const bh = bubble.height
+
+    // Center of bubble
+    const cx = bx + bw / 2
+    const cy = by + bh / 2
+
+    // Direction from center to tail tip
+    const dx = bubble.tailX - cx
+    const dy = bubble.tailY - cy
+
+    // Determine which edge the tail attaches to based on aspect-normalized distance
+    const absDx = Math.abs(dx)
+    const absDy = Math.abs(dy)
+
+    let base1X: number, base1Y: number, base2X: number, base2Y: number
+
+    if (absDx / bw > absDy / bh) {
+      // Attach to left or right edge
+      const edgeX = dx > 0 ? bx + bw : bx
+      // Position base midpoint toward the tail tip side (30%/70% split)
+      const midY = Math.max(by + hw, Math.min(by + bh - hw, bubble.tailY < cy ? by + bh * TAIL_BASE_NEAR_RATIO : by + bh * TAIL_BASE_FAR_RATIO))
+      base1X = edgeX; base1Y = midY - hw
+      base2X = edgeX; base2Y = midY + hw
+    } else {
+      // Attach to top or bottom edge
+      const edgeY = dy > 0 ? by + bh : by
+      const midX = Math.max(bx + hw, Math.min(bx + bw - hw, bubble.tailX < cx ? bx + bw * TAIL_BASE_NEAR_RATIO : bx + bw * TAIL_BASE_FAR_RATIO))
+      base1X = midX - hw; base1Y = edgeY
+      base2X = midX + hw; base2Y = edgeY
+    }
+
+    return { base1X, base1Y, base2X, base2Y }
+  }
+
+  interface BubbleTailRender { d: string; seamX: number; seamY: number; seamSize: number }
+
+  /** Compute the tail path `d` string and seam cover rect in a single geometry pass. */
+  const bubbleTailRender = (bubble: BubbleData): BubbleTailRender => {
+    const { base1X, base1Y, base2X, base2Y } = computeTailGeometry(bubble)
+    const d = `M ${base1X} ${base1Y} L ${bubble.tailX} ${bubble.tailY} L ${base2X} ${base2Y}`
+    const sw = bubble.strokeWidth ?? DEFAULT_STROKE_WIDTH
+    const seamSize = Math.round(sw * SEAM_COVER_RATIO)
+    const seamX = (base1X + base2X) / 2 - seamSize / 2
+    const seamY = (base1Y + base2Y) / 2 - seamSize / 2
+    return { d, seamX, seamY, seamSize }
+  }
+
+  /** SVG path `d` attribute string for a bubble's tail triangle. */
+  const bubbleTailPath = (bubble: BubbleData): string => {
+    return bubbleTailRender(bubble).d
+  }
+
+  /** Seam cover rect geometry to hide stroke overlap where tail meets bubble. Size scales with stroke width. */
+  const bubbleTailSeamRect = (bubble: BubbleData): { x: number; y: number; width: number; height: number } => {
+    const r = bubbleTailRender(bubble)
+    return { x: r.seamX, y: r.seamY, width: r.seamSize, height: r.seamSize }
   }
 
   /**
@@ -348,12 +429,19 @@ export function useSvgEditor() {
       const liveIdx = bubbles.value.findIndex(b => b.id === snapBubble.id)
       if (liveIdx < 0) continue
       const b = bubbles.value[liveIdx]!
+      const absSx = Math.abs(sx)
       b.x = originX + (snapBubble.x - originX) * sx
       b.y = originY + (snapBubble.y - originY) * sy
       b.width = snapBubble.width * Math.abs(sx)
       b.height = snapBubble.height * Math.abs(sy)
       b.tailX = originX + (snapBubble.tailX - originX) * sx
       b.tailY = originY + (snapBubble.tailY - originY) * sy
+      // Scale per-bubble style properties proportionally
+      const absSy = Math.abs(sy)
+      if (snapBubble.strokeWidth != null) b.strokeWidth = snapBubble.strokeWidth * absSx
+      if (snapBubble.rx != null) b.rx = snapBubble.rx * absSx
+      if (snapBubble.ry != null) b.ry = snapBubble.ry * absSy
+      if (snapBubble.fontSize != null) b.fontSize = snapBubble.fontSize * absSx
     }
 
     for (const snapText of snapshot.texts) {
@@ -426,11 +514,16 @@ export function useSvgEditor() {
     }
     svg += `  </g>\n`
 
-    // Bubbles layer
+    // Bubbles layer — style.md order: rect, tail path, seam cover
     svg += `  <g id="bubbles-layer">\n`
     for (const bubble of bubbleElements) {
-      svg += `    <polygon points="${bubbleTailPoints(bubble)}" stroke="black" stroke-width="2" fill="white"/>\n`
-      svg += `    <rect x="${bubble.x}" y="${bubble.y}" width="${bubble.width}" height="${bubble.height}" rx="20" ry="20" stroke="black" stroke-width="2" fill="white"/>\n`
+      const sw = bubble.strokeWidth ?? DEFAULT_STROKE_WIDTH
+      const brx = bubble.rx ?? DEFAULT_BUBBLE_RX
+      const bry = bubble.ry ?? DEFAULT_BUBBLE_RY
+      svg += `    <rect x="${bubble.x}" y="${bubble.y}" width="${bubble.width}" height="${bubble.height}" rx="${brx}" ry="${bry}" stroke="black" stroke-width="${sw}" fill="white"/>\n`
+      svg += `    <path d="${bubbleTailPath(bubble)}" fill="white" stroke="black" stroke-width="${sw}" stroke-linejoin="round"/>\n`
+      const seam = bubbleTailSeamRect(bubble)
+      svg += `    <rect x="${seam.x}" y="${seam.y}" width="${seam.width}" height="${seam.height}" fill="white"/>\n`
     }
     svg += `  </g>\n`
 
@@ -440,7 +533,10 @@ export function useSvgEditor() {
       if (bubble.text) {
         const cx = bubble.x + bubble.width / 2
         const cy = bubble.y + bubble.height / 2
-        svg += `    <text x="${cx}" y="${cy}" text-anchor="middle" dominant-baseline="middle" font-family="${DEFAULT_FONT_FAMILY}" font-size="${DEFAULT_FONT_SIZE}">${escapeXml(bubble.text)}</text>\n`
+        const ff = bubble.fontFamily ?? DEFAULT_FONT_FAMILY
+        const fs = bubble.fontSize ?? DEFAULT_FONT_SIZE
+        const fw = bubble.fontWeight ?? DEFAULT_FONT_WEIGHT
+        svg += `    <text x="${cx}" y="${cy}" text-anchor="middle" dominant-baseline="middle" font-family="${escapeXml(ff)}" font-size="${fs}" font-weight="${fw}" fill="black">${escapeXml(bubble.text)}</text>\n`
       }
     }
     for (const textItem of texts.value) {
@@ -496,6 +592,8 @@ export function useSvgEditor() {
       // Find rounded rects (bubble bodies) — identified by having rx or ry attributes
       const rectEls = bubblesLayer.querySelectorAll('rect[rx], rect[ry]')
       const polygonEls = bubblesLayer.querySelectorAll('polygon')
+      // Also collect <path> elements that could be tails (exclude non-tail paths by checking for simple M/L structure)
+      const pathEls = bubblesLayer.querySelectorAll('path')
 
       for (const rectEl of rectEls) {
         const bx = parseFloat(rectEl.getAttribute('x') || '0')
@@ -506,13 +604,33 @@ export function useSvgEditor() {
         const centerX = bx + bw / 2
         const centerY = by + bh / 2
 
-        // Find the closest polygon tail for this bubble rect
-        let tailX = centerX
-        let tailY = by + bh + 40
+        // Read style attributes from the rect
+        const rawSw = parseFloat(rectEl.getAttribute('stroke-width') || '')
+        const rawRx = parseFloat(rectEl.getAttribute('rx') || '')
+        const rawRy = parseFloat(rectEl.getAttribute('ry') || '')
+        const sw = Number.isNaN(rawSw) ? DEFAULT_STROKE_WIDTH : rawSw
+        const brx = Number.isNaN(rawRx) ? DEFAULT_BUBBLE_RX : rawRx
+        const bry = Number.isNaN(rawRy) ? DEFAULT_BUBBLE_RY : rawRy
+
+        // Find the closest tail for this bubble rect — check both <polygon> and <path> elements
+        let tailX = centerX + bw / 2 + DEFAULT_TAIL_OFFSET
+        let tailY = centerY
         let bestDist = Infinity
 
         for (const polyEl of polygonEls) {
           const tailPt = parseTailFromPolygon(polyEl.getAttribute('points') || '', bx, by, bw, bh)
+          if (!tailPt) continue
+          const dist = Math.sqrt((tailPt.baseX - centerX) ** 2 + (tailPt.baseY - centerY) ** 2)
+          if (dist < bestDist) {
+            bestDist = dist
+            tailX = tailPt.tipX
+            tailY = tailPt.tipY
+          }
+        }
+
+        for (const pathEl of pathEls) {
+          const d = pathEl.getAttribute('d') || ''
+          const tailPt = parseTailFromPath(d, bx, by, bw, bh)
           if (!tailPt) continue
           const dist = Math.sqrt((tailPt.baseX - centerX) ** 2 + (tailPt.baseY - centerY) ** 2)
           if (dist < bestDist) {
@@ -532,6 +650,9 @@ export function useSvgEditor() {
           tailY,
           text: '',
           layer: 'bubbles',
+          strokeWidth: sw,
+          rx: brx,
+          ry: bry,
         })
       }
     }
@@ -567,6 +688,13 @@ export function useSvgEditor() {
           }
           if (bestBubble) {
             bestBubble.text = content
+            // Read font attributes from the text element and store on bubble
+            const fs = parseFloat(textEl.getAttribute('font-size') || '')
+            if (!Number.isNaN(fs)) bestBubble.fontSize = fs
+            const ff = textEl.getAttribute('font-family')
+            if (ff) bestBubble.fontFamily = ff
+            const fw = textEl.getAttribute('font-weight')
+            if (fw) bestBubble.fontWeight = fw
             continue
           }
         }
@@ -657,7 +785,9 @@ export function useSvgEditor() {
     updateText,
     deleteText,
     commitTextEdit,
-    bubbleTailPoints,
+    bubbleTailPath,
+    bubbleTailSeamRect,
+    bubbleTailRender,
     moveElements,
     scaleElements,
     getElementBoundsFromData,
@@ -681,6 +811,10 @@ export function useSvgEditor() {
     MAX_ZOOM,
     DEFAULT_FONT_SIZE,
     DEFAULT_FONT_FAMILY,
+    DEFAULT_FONT_WEIGHT,
+    DEFAULT_STROKE_WIDTH,
+    DEFAULT_BUBBLE_RX,
+    DEFAULT_BUBBLE_RY,
   }
 }
 
