@@ -481,7 +481,7 @@ export function useSvgEditor() {
       if (snapBubble.strokeWidth != null) b.strokeWidth = snapBubble.strokeWidth * absSx
       if (snapBubble.rx != null) b.rx = snapBubble.rx * absSx
       if (snapBubble.ry != null) b.ry = snapBubble.ry * absSy
-      if (snapBubble.fontSize != null) b.fontSize = snapBubble.fontSize * absSx
+      // fontSize intentionally not scaled — text size remains constant during bubble resize
     }
 
     for (const snapText of snapshot.texts) {
