@@ -197,6 +197,7 @@ const navigateFile = (direction: -1 | 1) => {
   flex: 1;
   min-height: 0;
   overflow: hidden;
+  padding-bottom: 0; /* override global .content-with-nav padding; flexbox layout needs no extra spacing */
 }
 
 .header {
