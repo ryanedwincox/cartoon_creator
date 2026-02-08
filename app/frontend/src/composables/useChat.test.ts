@@ -1,4 +1,8 @@
 // [Test]: useChat — phase state machine: happy path, error, interrupt, connection drop, unknown SSE, idle reset.
+// [Freeze justification]: Governance test for the agentPhase state machine (7 states, 6+ transitions).
+// The phase drives ChatPanel UX (input disable, activity indicators, timer lifecycle). Incorrect
+// transitions cause broken UI states (stuck spinners, phantom errors, input lockout). This is a
+// complex state machine with concurrent mutation (interrupt mid-stream) that warrants frozen contracts.
 import { describe, it, expect, vi, beforeEach, afterEach } from 'vitest'
 import { effectScope } from 'vue'
 import { useChat } from './useChat'

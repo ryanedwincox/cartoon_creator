@@ -1,4 +1,8 @@
 // [Test]: useElapsedTimer — lifecycle (start/stop/reset), formatted output, idempotent start, cleanup.
+// [Freeze justification]: Governance test for a timer state machine with multiple transitions
+// (start/stop/reset/idempotent-start). formatElapsed is a stable leaf-node utility consumed by
+// ChatPanel's elapsed display. Freezing the transition contract and output format prevents
+// silent regressions in timer lifecycle that would surface as broken UX (stuck timers, wrong display).
 import { describe, it, expect, vi, beforeEach, afterEach } from 'vitest'
 import { effectScope } from 'vue'
 import { useElapsedTimer, formatElapsed } from './useElapsedTimer'

@@ -71,6 +71,8 @@ export function useChat(projectId: string) {
     currentResponse.value = ''
     agentPhase.value = 'sending'
 
+    let networkError: unknown = null
+
     try {
       const res = await fetch(`${API_BASE}/chat/${projectId}/send`, {
         method: 'POST',
@@ -126,13 +128,14 @@ export function useChat(projectId: string) {
                   })
                 }
               } catch {
-                // Malformed SSE line — skip silently
+                // Malformed SSE line — skip silently (acceptable: partial JSON from chunked transport)
               }
             }
           }
         }
       }
     } catch (err) {
+      networkError = err
       console.error('sendMessage failed:', err)
       // Cast: interrupt() mutates agentPhase concurrently; TS narrowing doesn't see it
       if ((agentPhase.value as string) !== 'interrupted') {
@@ -142,9 +145,10 @@ export function useChat(projectId: string) {
       // If still in a working phase, connection dropped unexpectedly
       if (agentPhase.value === 'streaming' || agentPhase.value === 'waiting' || agentPhase.value === 'sending') {
         agentPhase.value = 'error'
+        const detail = networkError instanceof Error ? `: ${networkError.message}` : ''
         messages.value.push({
           role: 'assistant',
-          content: 'Connection lost — agent response may be incomplete.',
+          content: `Connection lost — agent response may be incomplete${detail}.`,
           images: [],
         })
       }
