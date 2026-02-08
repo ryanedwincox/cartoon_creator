@@ -77,6 +77,12 @@ const TAIL_BASE_FAR_RATIO = 0.7
 const SEAM_COVER_RATIO = 1.17 // seam cover size relative to stroke width (~14/12)
 const TEXT_BOUNDS_WIDTH_PER_CHAR = 0.6
 const TEXT_BOUNDS_MIN_WIDTH_CHARS = 2
+// 1.2em is the standard CSS/SVG default line-height for readable multi-line text.
+const LINE_HEIGHT_FACTOR = 1.2
+// 0.35em approximates the distance from the vertical center of a text line to its
+// alphabetic baseline. Derived empirically to visually center tspan blocks within
+// bubble rects (midpoint between ascender top ~0.7em and baseline 0em → ~0.35em).
+const BASELINE_MIDDLE_OFFSET = 0.35
 
 export function useSvgEditor() {
   const currentTool = ref<Tool>('select')
@@ -248,18 +254,32 @@ export function useSvgEditor() {
   }
 
   const commitTextEdit = () => {
-    const id = editingTextId.value
-    if (!id) return
+    // Mutually exclusive: at most one of editingTextId / editingTextBubble is set at a time.
+    // Both branches are checked defensively but only one will fire per call.
 
-    const textItem = texts.value.find(t => t.id === id)
-    if (textItem && !textItem.content.trim()) {
-      // Remove empty text elements without saving extra undo state (addText already saved)
-      texts.value = texts.value.filter(t => t.id !== id)
-    } else if (textItem) {
-      // Save state so typed text is captured in undo history
-      saveState()
+    // Commit standalone text edit
+    const id = editingTextId.value
+    if (id) {
+      const textItem = texts.value.find(t => t.id === id)
+      if (textItem && !textItem.content.trim()) {
+        // Remove empty text elements without saving extra undo state (addText already saved)
+        texts.value = texts.value.filter(t => t.id !== id)
+      } else if (textItem) {
+        // Save state so typed text is captured in undo history
+        saveState()
+      }
+      editingTextId.value = null
     }
-    editingTextId.value = null
+
+    // Commit bubble text edit
+    const bubbleId = editingTextBubble.value
+    if (bubbleId) {
+      const bubble = bubbles.value.find(b => b.id === bubbleId)
+      if (bubble) {
+        saveState()
+      }
+      editingTextBubble.value = null
+    }
   }
 
   interface TailGeometry { base1X: number; base1Y: number; base2X: number; base2Y: number }
@@ -368,12 +388,15 @@ export function useSvgEditor() {
 
     const textItem = texts.value.find(t => t.id === id)
     if (textItem) {
-      // Heuristic: approximate text width from content length × fontSize factor
+      // Multiline-aware bounds: use longest line for width, line count for height
+      const lines = textItem.content.split('\n')
+      const longestLineLen = Math.max(...lines.map(l => l.length), 0)
       const estimatedWidth = Math.max(
-        textItem.content.length * textItem.fontSize * TEXT_BOUNDS_WIDTH_PER_CHAR,
+        longestLineLen * textItem.fontSize * TEXT_BOUNDS_WIDTH_PER_CHAR,
         textItem.fontSize * TEXT_BOUNDS_MIN_WIDTH_CHARS,
       )
-      return { x: textItem.x, y: textItem.y - textItem.fontSize, width: estimatedWidth, height: textItem.fontSize }
+      const totalHeight = lines.length * textItem.fontSize * LINE_HEIGHT_FACTOR
+      return { x: textItem.x, y: textItem.y - textItem.fontSize, width: estimatedWidth, height: totalHeight }
     }
 
     return null
@@ -536,12 +559,30 @@ export function useSvgEditor() {
         const ff = bubble.fontFamily ?? DEFAULT_FONT_FAMILY
         const fs = bubble.fontSize ?? DEFAULT_FONT_SIZE
         const fw = bubble.fontWeight ?? DEFAULT_FONT_WEIGHT
-        svg += `    <text x="${cx}" y="${cy}" text-anchor="middle" dominant-baseline="middle" font-family="${escapeXml(ff)}" font-size="${fs}" font-weight="${fw}" fill="black">${escapeXml(bubble.text)}</text>\n`
+        const lines = bubble.text.split('\n')
+        const lineHeight = fs * LINE_HEIGHT_FACTOR
+        // First tspan dy: shift up by half the text block then down by baseline offset
+        const firstDy = -(lines.length - 1) * lineHeight / 2 + fs * BASELINE_MIDDLE_OFFSET
+        svg += `    <text x="${cx}" y="${cy}" text-anchor="middle" font-family="${escapeXml(ff)}" font-size="${fs}" font-weight="${fw}" fill="black">`
+        for (let i = 0; i < lines.length; i++) {
+          const dy = i === 0 ? firstDy : lineHeight
+          const content = escapeXml(lines[i] || '\u00A0')
+          svg += `<tspan x="${cx}" dy="${dy}">${content}</tspan>`
+        }
+        svg += `</text>\n`
       }
     }
     for (const textItem of texts.value) {
       if (textItem.content) {
-        svg += `    <text x="${textItem.x}" y="${textItem.y}" font-family="${DEFAULT_FONT_FAMILY}" font-size="${textItem.fontSize}" data-standalone="true">${escapeXml(textItem.content)}</text>\n`
+        const lines = textItem.content.split('\n')
+        const lineHeight = textItem.fontSize * LINE_HEIGHT_FACTOR
+        svg += `    <text x="${textItem.x}" y="${textItem.y}" font-family="${DEFAULT_FONT_FAMILY}" font-size="${textItem.fontSize}" data-standalone="true">`
+        for (let i = 0; i < lines.length; i++) {
+          const dy = i === 0 ? 0 : lineHeight
+          const content = escapeXml(lines[i] || '\u00A0')
+          svg += `<tspan x="${textItem.x}" dy="${dy}">${content}</tspan>`
+        }
+        svg += `</text>\n`
       }
     }
     svg += `  </g>\n`
@@ -665,7 +706,21 @@ export function useSvgEditor() {
         const isCenteredText = textEl.getAttribute('text-anchor') === 'middle'
         const x = parseFloat(textEl.getAttribute('x') || '0')
         const y = parseFloat(textEl.getAttribute('y') || '0')
-        const content = textEl.textContent?.trim() || ''
+
+        // Extract text content: prefer tspan children, fall back to textContent
+        const tspans = textEl.querySelectorAll('tspan')
+        let content: string
+        if (tspans.length > 0) {
+          content = Array.from(tspans)
+            .map(ts => {
+              const t = ts.textContent ?? ''
+              // Convert NBSP placeholders back to empty lines
+              return t === '\u00A0' ? '' : t
+            })
+            .join('\n')
+        } else {
+          content = textEl.textContent?.trim() || ''
+        }
         if (!content) continue
 
         // Try to match centered text to the closest bubble by proximity to bubble center
@@ -815,6 +870,8 @@ export function useSvgEditor() {
     DEFAULT_STROKE_WIDTH,
     DEFAULT_BUBBLE_RX,
     DEFAULT_BUBBLE_RY,
+    LINE_HEIGHT_FACTOR,
+    BASELINE_MIDDLE_OFFSET,
   }
 }
 

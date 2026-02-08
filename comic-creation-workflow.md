@@ -51,23 +51,68 @@ Convert each generated PNG to SVG:
 
 ## Step 4: Add Speech Bubbles
 
-Edit each SVG to add speech bubbles in a dedicated layer:
+Edit each SVG to add speech bubbles in a dedicated `<g id="bubbles-layer">` group. Do not add text yet — just the empty bubble shapes. Every bubble must use this exact structure:
 
-- Add a `<g id="bubbles-layer">` group to the SVG.
-- For each speech bubble, add the bubble rect, tail path, and seam cover as described in `style.md`.
-- Position bubbles near the speaking character, with the tail pointing toward them.
-- Do not add text yet — just the empty bubble shapes.
+```xml
+<g id="bubbles-layer">
+  <!-- 1. Main bubble: rounded rectangle -->
+  <rect x="{X}" y="{Y}" width="{W}" height="{H}" rx="30" ry="30"
+        stroke="black" stroke-width="12" fill="white"/>
 
-See `style.md` for the exact SVG structure of speech bubbles.
+  <!-- 2. Tail: triangular pointer toward the speaker -->
+  <path d="M {bx},{ty} L {tx},{tm} L {bx},{by}"
+        fill="white" stroke="black" stroke-width="12" stroke-linejoin="round"/>
+
+  <!-- 3. Seam cover: small white rect hiding the stroke where tail meets bubble -->
+  <rect x="{cx}" y="{cy}" width="14" height="14" fill="white"/>
+</g>
+```
+
+Rules:
+- **Stroke width**: 12px on both the rect and the tail path. Must match.
+- **Corner radius**: rx/ry="30" for the rounded rectangle.
+- **Tail**: A triangular `<path>` with `stroke-linejoin="round"`. Base edge sits flush against the bubble rect edge. Point toward the speaker.
+- **Seam cover**: A small white `<rect>` (no stroke) over the joint where tail meets bubble. ~14x14 at stroke-width 12.
+- **Tail direction**: Point toward the speaking character. For off-screen speakers, point toward the panel edge.
 
 ## Step 5: Add Text
 
-Add dialog text in a separate layer on top of the bubbles:
+Add dialog text in a separate `<g id="text-layer">` group **after** the bubbles layer (so text renders on top). Text is always rendered using `<tspan>` child elements — even for single-line text. Every text element must use this exact structure:
 
-- Add a `<g id="text-layer">` group after the bubbles layer.
-- For each speech bubble, add a `<text>` element centered inside the bubble rect.
-- Use the font and styling specified in `style.md`.
-- This is the final step — the SVG files are now complete.
+```xml
+<g id="text-layer">
+  <!-- Bubble text: x,y = bubble center. Each line is a <tspan>. -->
+  <!-- For a bubble at y=200 height=100 (center y=250), font-size=48: -->
+  <!--   lineHeight = 48 * 1.2 = 57.6 -->
+  <!--   For 2 lines: firstDy = -(1 * 57.6) / 2 + 48 * 0.35 = -28.8 + 16.8 = -12.0 -->
+  <text x="250" y="250" text-anchor="middle" font-family="'Anime Ace 2 BB', sans-serif"
+        font-size="48" font-weight="bold" fill="black">
+    <tspan x="250" dy="-12.0">First line</tspan>
+    <tspan x="250" dy="57.6">Second line</tspan>
+  </text>
+
+  <!-- Single-line example (1 line): firstDy = -(0 * 57.6) / 2 + 48 * 0.35 = 16.8 -->
+  <text x="250" y="250" text-anchor="middle" font-family="'Anime Ace 2 BB', sans-serif"
+        font-size="48" font-weight="bold" fill="black">
+    <tspan x="250" dy="16.8">Single line</tspan>
+  </text>
+</g>
+```
+
+Centering formula:
+- `lineHeight = fontSize * 1.2`
+- First tspan `dy = -(lineCount - 1) * lineHeight / 2 + fontSize * 0.35`
+- Subsequent tspans `dy = lineHeight`
+- Empty lines use `\u00A0` (non-breaking space) to preserve spacing.
+
+Rules:
+- **Font**: `'Anime Ace 2 BB', sans-serif` — always use this font family.
+- **Font size**: 48px.
+- **Font weight**: bold.
+- **Alignment**: `text-anchor="middle"`, centered horizontally at the midpoint of the bubble rect.
+- **Vertical centering**: Use the `<tspan>` dy formula above. Do **not** use `dominant-baseline`.
+- **Fill**: black.
+- **Layer order**: `bubbles-layer` renders first (behind), `text-layer` on top.
 
 ## Result
 

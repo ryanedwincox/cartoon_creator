@@ -6,7 +6,8 @@ import type { Point, UndoState } from '../../composables/useSvgEditor'
 const editor = inject('svgEditor') as ReturnType<typeof import('../../composables/useSvgEditor').useSvgEditor>
 
 const canvasRef = ref<SVGSVGElement | null>(null)
-const textInputRef = ref<HTMLInputElement | null>(null)
+const textInputRef = ref<HTMLTextAreaElement | null>(null)
+const bubbleTextInputRef = ref<HTMLTextAreaElement | null>(null)
 const isDrawing = ref(false)
 const currentPath = ref<Point[]>([])
 const isPanning = ref(false)
@@ -59,6 +60,39 @@ const bubbleTailData = computed(() => {
   const map = new Map<string, ReturnType<typeof editor.bubbleTailRender>>()
   for (const bubble of editor.bubbles.value) {
     map.set(bubble.id, editor.bubbleTailRender(bubble))
+  }
+  return map
+})
+
+/** Pre-computed text lines and resolved fontSize keyed by bubble id — avoids redundant split/nullish in template. */
+const bubbleTextLines = computed(() => {
+  const map = new Map<string, { lines: string[]; fontSize: number }>()
+  for (const bubble of editor.bubbles.value) {
+    map.set(bubble.id, {
+      lines: bubble.text.split('\n'),
+      fontSize: bubble.fontSize ?? editor.DEFAULT_FONT_SIZE,
+    })
+  }
+  return map
+})
+
+/** Compute tspan dy for a bubble text line, encapsulating the centering formula. */
+const bubbleTspanDy = (bubbleId: string, lineIndex: number): number => {
+  const data = bubbleTextLines.value.get(bubbleId)
+  if (!data) return 0
+  const { lines, fontSize } = data
+  const lineHeight = fontSize * editor.LINE_HEIGHT_FACTOR
+  if (lineIndex === 0) {
+    return -(lines.length - 1) * lineHeight / 2 + fontSize * editor.BASELINE_MIDDLE_OFFSET
+  }
+  return lineHeight
+}
+
+/** Pre-computed text lines keyed by text item id. */
+const textItemLines = computed(() => {
+  const map = new Map<string, string[]>()
+  for (const textItem of editor.texts.value) {
+    map.set(textItem.id, textItem.content.split('\n'))
   }
   return map
 })
@@ -610,17 +644,39 @@ const handleTextDblClick = (id: string) => {
   nextTick(() => textInputRef.value?.focus())
 }
 
-const handleTextInput = (e: Event) => {
-  const id = editor.editingTextId.value
-  if (!id) return
-  editor.updateText(id, { content: (e.target as HTMLInputElement).value })
+const handleBubbleDblClick = (bubbleId: string) => {
+  editor.editingTextBubble.value = bubbleId
+  nextTick(() => bubbleTextInputRef.value?.focus())
 }
 
-const handleTextInputKeydown = (e: KeyboardEvent) => {
-  if (e.key === 'Enter' || e.key === 'Escape') {
+const handleBubbleTextInput = (e: Event) => {
+  const id = editor.editingTextBubble.value
+  if (!id) return
+  editor.updateBubble(id, { text: (e.target as HTMLTextAreaElement).value })
+}
+
+const handleBubbleTextKeydown = (e: KeyboardEvent) => {
+  if (e.key === 'Escape') {
     e.preventDefault()
     editor.commitTextEdit()
   }
+  // Enter inserts newline (default textarea behavior) — don't prevent
+  // Stop propagation so editor keyboard shortcuts don't fire while typing
+  e.stopPropagation()
+}
+
+const handleTextInput = (e: Event) => {
+  const id = editor.editingTextId.value
+  if (!id) return
+  editor.updateText(id, { content: (e.target as HTMLTextAreaElement).value })
+}
+
+const handleTextInputKeydown = (e: KeyboardEvent) => {
+  if (e.key === 'Escape') {
+    e.preventDefault()
+    editor.commitTextEdit()
+  }
+  // Enter inserts newline (default textarea behavior) — don't prevent
   // Stop propagation so editor keyboard shortcuts don't fire while typing
   e.stopPropagation()
 }
@@ -676,8 +732,16 @@ const TEXT_INPUT_CHAR_WIDTH_FACTOR = 0.65
 const TEXT_INPUT_PADDING = 20
 
 const textInputWidth = (textItem: { content: string; fontSize: number }): number => {
-  const contentWidth = Math.max(textItem.content.length, 8) * textItem.fontSize * TEXT_INPUT_CHAR_WIDTH_FACTOR + TEXT_INPUT_PADDING
+  const lines = textItem.content.split('\n')
+  const longestLen = Math.max(...lines.map(l => l.length), 8)
+  const contentWidth = longestLen * textItem.fontSize * TEXT_INPUT_CHAR_WIDTH_FACTOR + TEXT_INPUT_PADDING
   return Math.max(TEXT_INPUT_MIN_WIDTH, contentWidth)
+}
+
+const TEXT_INPUT_VERTICAL_PADDING = 8
+const textInputHeight = (textItem: { content: string; fontSize: number }): number => {
+  const lines = textItem.content.split('\n')
+  return Math.max(1, lines.length) * textItem.fontSize * editor.LINE_HEIGHT_FACTOR + TEXT_INPUT_VERTICAL_PADDING
 }
 
 const cursorStyle = computed(() => {
@@ -800,20 +864,50 @@ const cursorStyle = computed(() => {
     <!-- Text layer -->
     <g v-show="editor.layerVisibility.text" id="text-layer">
       <!-- Bubble text -->
-      <text
-        v-for="bubble in editor.bubbles.value"
-        :key="'text-' + bubble.id"
-        :x="bubble.x + bubble.width / 2"
-        :y="bubble.y + bubble.height / 2"
-        text-anchor="middle"
-        dominant-baseline="middle"
-        :font-family="bubble.fontFamily ?? editor.DEFAULT_FONT_FAMILY"
-        :font-size="bubble.fontSize ?? editor.DEFAULT_FONT_SIZE"
-        :font-weight="bubble.fontWeight ?? editor.DEFAULT_FONT_WEIGHT"
-        fill="black"
-      >
-        {{ bubble.text }}
-      </text>
+      <g v-for="bubble in editor.bubbles.value" :key="'text-' + bubble.id">
+        <text
+          v-if="editor.editingTextBubble.value !== bubble.id"
+          :x="bubble.x + bubble.width / 2"
+          :y="bubble.y + bubble.height / 2"
+          text-anchor="middle"
+          :font-family="bubble.fontFamily ?? editor.DEFAULT_FONT_FAMILY"
+          :font-size="bubbleTextLines.get(bubble.id)?.fontSize ?? editor.DEFAULT_FONT_SIZE"
+          :font-weight="bubble.fontWeight ?? editor.DEFAULT_FONT_WEIGHT"
+          fill="black"
+          @dblclick.stop="handleBubbleDblClick(bubble.id)"
+        >
+          <tspan
+            v-for="(line, idx) in bubbleTextLines.get(bubble.id)?.lines"
+            :key="idx"
+            :x="bubble.x + bubble.width / 2"
+            :dy="bubbleTspanDy(bubble.id, idx)"
+          >{{ line || '\u00A0' }}</tspan>
+        </text>
+
+        <!-- Inline editing via foreignObject for bubble text -->
+        <foreignObject
+          v-if="editor.editingTextBubble.value === bubble.id"
+          :x="bubble.x"
+          :y="bubble.y"
+          :width="bubble.width"
+          :height="bubble.height"
+        >
+          <textarea
+            ref="bubbleTextInputRef"
+            :value="bubble.text"
+            class="bubble-text-input"
+            :style="{
+              fontSize: (bubbleTextLines.get(bubble.id)?.fontSize ?? editor.DEFAULT_FONT_SIZE) + 'px',
+              fontFamily: bubble.fontFamily ?? editor.DEFAULT_FONT_FAMILY,
+              fontWeight: bubble.fontWeight ?? editor.DEFAULT_FONT_WEIGHT,
+            }"
+            @input="handleBubbleTextInput"
+            @keydown="handleBubbleTextKeydown"
+            @blur="editor.commitTextEdit()"
+            @mousedown.stop
+          />
+        </foreignObject>
+      </g>
 
       <!-- Standalone text elements -->
       <g
@@ -834,7 +928,12 @@ const cursorStyle = computed(() => {
           @touchstart="handleElementTouchStart(textItem.id, $event)"
           @dblclick.stop="handleTextDblClick(textItem.id)"
         >
-          {{ textItem.content }}
+          <tspan
+            v-for="(line, idx) in textItemLines.get(textItem.id)"
+            :key="idx"
+            :x="textItem.x"
+            :dy="idx === 0 ? 0 : textItem.fontSize * editor.LINE_HEIGHT_FACTOR"
+          >{{ line || '\u00A0' }}</tspan>
         </text>
 
         <!-- Inline editing via foreignObject -->
@@ -843,9 +942,9 @@ const cursorStyle = computed(() => {
           :x="textItem.x"
           :y="textItem.y - textItem.fontSize"
           :width="textInputWidth(textItem)"
-          :height="textItem.fontSize + 8"
+          :height="textInputHeight(textItem)"
         >
-          <input
+          <textarea
             ref="textInputRef"
             :value="textItem.content"
             class="text-inline-input"
@@ -960,5 +1059,21 @@ g:hover rect {
   outline: none;
   padding: 0 2px;
   box-sizing: border-box;
+  resize: none;
+  white-space: pre;
+  overflow: hidden;
+}
+
+.bubble-text-input {
+  width: 100%;
+  height: 100%;
+  border: 1px solid #4f46e5;
+  background: rgba(255, 255, 255, 0.9);
+  outline: none;
+  padding: 4px;
+  box-sizing: border-box;
+  resize: none;
+  text-align: center;
+  overflow-y: auto;
 }
 </style>
