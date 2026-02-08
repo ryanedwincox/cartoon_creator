@@ -1,6 +1,6 @@
 <!-- [Component]: SVG editor modal shell. Responsible for loading SVG files, autosaving periodically and on close, providing editor instance via inject, and keyboard shortcut routing. NOT concerned with canvas rendering or drawing logic. -->
 <script setup lang="ts">
-import { ref, onMounted, onUnmounted, provide } from 'vue'
+import { ref, computed, onMounted, onUnmounted, provide } from 'vue'
 import { useSvgEditor } from '../../composables/useSvgEditor'
 import SvgCanvas from './SvgCanvas.vue'
 import Toolbar from './Toolbar.vue'
@@ -25,6 +25,8 @@ const AUTOSAVE_INTERVAL_MS = 30_000
 
 const editor = useSvgEditor()
 provide('svgEditor', editor)
+
+const hasSelection = computed(() => editor.selectedIds.value.size > 0)
 
 const saveStatus = ref<'idle' | 'saving' | 'saved' | 'error'>('idle')
 let saveStatusTimer: ReturnType<typeof setTimeout> | undefined
@@ -204,7 +206,21 @@ onUnmounted(() => {
 
     <div class="nav-overlay">
       <NavButton :direction="-1" :disabled="!hasPrev" @click="handleNavigate(-1)" />
-      <NavButton :direction="1" :disabled="!hasNext" @click="handleNavigate(1)" />
+      <div class="nav-right-group">
+        <button
+          v-if="hasSelection"
+          type="button"
+          class="delete-selection-btn"
+          title="Delete selection"
+          @click="editor.deleteSelected()"
+        >
+          <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round">
+            <polyline points="3 6 5 6 21 6" />
+            <path d="M19 6v14a2 2 0 0 1-2 2H7a2 2 0 0 1-2-2V6m3 0V4a2 2 0 0 1 2-2h4a2 2 0 0 1 2 2v2" />
+          </svg>
+        </button>
+        <NavButton :direction="1" :disabled="!hasNext" @click="handleNavigate(1)" />
+      </div>
     </div>
   </div>
 </template>
@@ -308,7 +324,45 @@ onUnmounted(() => {
   pointer-events: none;
 }
 
-.nav-overlay > * {
+.nav-overlay > *,
+.nav-right-group > * {
   pointer-events: auto;
+}
+
+.nav-right-group {
+  display: flex;
+  align-items: center;
+  gap: 0.5rem;
+}
+
+.delete-selection-btn {
+  width: 2.75rem;
+  height: 2.75rem;
+  border: none;
+  border-radius: 50%;
+  background: var(--error);
+  color: white;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  padding: 0;
+  cursor: pointer;
+  box-shadow: 0 2px 8px rgba(0, 0, 0, 0.3);
+  transition: opacity 0.15s;
+  opacity: 0.9;
+}
+
+.delete-selection-btn:hover {
+  opacity: 1;
+}
+
+.delete-selection-btn:active {
+  opacity: 1;
+  filter: brightness(0.85);
+}
+
+.delete-selection-btn svg {
+  width: 1.25rem;
+  height: 1.25rem;
 }
 </style>
