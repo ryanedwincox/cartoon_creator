@@ -61,7 +61,7 @@ Convert each generated PNG to SVG:
 Edit each SVG to add speech bubbles in a dedicated `<g id="bubbles-layer">` group. Do not add text yet — just the empty bubble shapes. Every bubble must use the exact structure defined in the Style Guide's "Speech Bubble Implementation" section (in style.md). Each bubble MUST have exactly ONE rect and ONE tail path. Do not add extra elements or deviate from that structure.
 
 Rules:
-- **Stroke width**: 12px on both the rect and the tail path. Must match.
+- **Stroke width**: 6px on both the rect and the tail path. Must match.
 - **Corner radius**: rx/ry="30" for the rounded rectangle.
 - **Tail**: A triangular `<path>` with `stroke-linejoin="round"`. The tail base is inset by half the stroke width from the bubble edge. Point toward the speaker.
 - **Tail direction**: Point toward the speaking character. For off-screen speakers, point toward the panel edge.

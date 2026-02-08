@@ -3,6 +3,7 @@ import { describe, it, expect } from 'vitest'
 import { useSvgEditor } from './useSvgEditor'
 
 const createEditor = () => useSvgEditor()
+const { DEFAULT_STROKE_WIDTH } = createEditor()
 
 describe('exportSvg tspan generation', () => {
   it('exports bubble text with tspan elements and correct dy centering', () => {
@@ -272,7 +273,7 @@ describe('round-trip export→import', () => {
       fontSize: 48,
       fontFamily: "'Anime Ace 2 BB', sans-serif",
       fontWeight: 'bold',
-      strokeWidth: 12,
+      strokeWidth: DEFAULT_STROKE_WIDTH,
       rx: 30, ry: 30,
     })
 
@@ -374,7 +375,7 @@ describe('seam cover removal and tail inset', () => {
       tailX: 350, tailY: 150,
       text: '',
       layer: 'bubbles',
-      strokeWidth: 12,
+      strokeWidth: DEFAULT_STROKE_WIDTH,
       rx: 30, ry: 30,
     })
 
@@ -400,7 +401,7 @@ describe('seam cover removal and tail inset', () => {
       tailX: 350, tailY: 150,
       text: '',
       layer: 'bubbles',
-      strokeWidth: 12,
+      strokeWidth: DEFAULT_STROKE_WIDTH,
       rx: 30, ry: 30,
     })
 
@@ -409,13 +410,14 @@ describe('seam cover removal and tail inset', () => {
     const pathEl = doc.querySelector('#bubbles-layer path')!
     const d = pathEl.getAttribute('d')!
 
-    // Tail is to the right, so base X should be 300 - 6 = 294 (bx + bw - sw/2)
+    // Tail is to the right: base X = bx + bw - sw/2
+    const expectedBaseX = 100 + 200 - DEFAULT_STROKE_WIDTH / 2
     const coords = d.match(/[\d.]+/g)!.map(Number)
     // M base1X base1Y L tipX tipY L base2X base2Y
     const base1X = coords[0]!
     const base2X = coords[4]!
-    expect(base1X).toBeCloseTo(294, 0)
-    expect(base2X).toBeCloseTo(294, 0)
+    expect(base1X).toBeCloseTo(expectedBaseX, 0)
+    expect(base2X).toBeCloseTo(expectedBaseX, 0)
   })
 
   it('tail base is inset by strokeWidth/2 from bubble edge (bottom tail)', () => {
@@ -426,7 +428,7 @@ describe('seam cover removal and tail inset', () => {
       tailX: 200, tailY: 250,
       text: '',
       layer: 'bubbles',
-      strokeWidth: 12,
+      strokeWidth: DEFAULT_STROKE_WIDTH,
       rx: 30, ry: 30,
     })
 
@@ -435,12 +437,13 @@ describe('seam cover removal and tail inset', () => {
     const pathEl = doc.querySelector('#bubbles-layer path')!
     const d = pathEl.getAttribute('d')!
 
-    // Tail is below, so base Y should be 200 - 6 = 194 (by + bh - sw/2)
+    // Tail is below: base Y = by + bh - sw/2
+    const expectedBaseY = 100 + 100 - DEFAULT_STROKE_WIDTH / 2
     const coords = d.match(/[\d.]+/g)!.map(Number)
     const base1Y = coords[1]!
     const base2Y = coords[5]!
-    expect(base1Y).toBeCloseTo(194, 0)
-    expect(base2Y).toBeCloseTo(194, 0)
+    expect(base1Y).toBeCloseTo(expectedBaseY, 0)
+    expect(base2Y).toBeCloseTo(expectedBaseY, 0)
   })
 
   it('imports old SVG with seam cover rect correctly', () => {

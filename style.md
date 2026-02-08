@@ -16,11 +16,11 @@ Speech bubbles are built from 2 SVG elements layered in a `bubbles-layer` group,
 <g id="bubbles-layer">
   <!-- 1. Main bubble: rounded rectangle -->
   <rect x="{X}" y="{Y}" width="{W}" height="{H}" rx="30" ry="30"
-        stroke="black" stroke-width="12" fill="white"/>
+        stroke="black" stroke-width="6" fill="white"/>
 
   <!-- 2. Tail: triangular pointer toward the speaker -->
   <path d="M {base1X},{base1Y} L {tipX},{tipY} L {base2X},{base2Y}"
-        fill="white" stroke="black" stroke-width="12" stroke-linejoin="round"/>
+        fill="white" stroke="black" stroke-width="6" stroke-linejoin="round"/>
 </g>
 <g id="text-layer">
   <text x="{center}" y="{textY}" font-family="'Anime Ace 2 BB', sans-serif"
@@ -32,7 +32,7 @@ Speech bubbles are built from 2 SVG elements layered in a `bubbles-layer` group,
 
 ## Key details
 
-- **Stroke width**: 12px on both the rect and the tail path. Must match.
+- **Stroke width**: 6px on both the rect and the tail path. Must match.
 - **Corner radius**: rx/ry="30" for the rounded rectangle.
 - **Tail**: A triangular `<path>` with `stroke-linejoin="round"` for smooth corners. The tail base is inset by half the stroke width from the bubble rect edge, so the white fill covers the stroke junction cleanly.
 - **Tail direction**: The tail can point in any direction. Attach its base to the appropriate edge of the bubble rect. For off-screen speakers, point the tail toward the edge of the panel.
