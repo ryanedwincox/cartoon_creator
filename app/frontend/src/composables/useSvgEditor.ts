@@ -723,14 +723,17 @@ export function useSvgEditor() {
             }
           }
           if (bestBubble) {
-            bestBubble.text = content
-            // Read font attributes from the text element and store on bubble
-            const fs = parseFloat(textEl.getAttribute('font-size') || '')
-            if (!Number.isNaN(fs)) bestBubble.fontSize = fs
-            const ff = textEl.getAttribute('font-family')
-            if (ff) bestBubble.fontFamily = ff
-            const fw = textEl.getAttribute('font-weight')
-            if (fw) bestBubble.fontWeight = fw
+            // Read font attributes from the first text element that matches this bubble
+            if (bestBubble.text === '') {
+              const fs = parseFloat(textEl.getAttribute('font-size') || '')
+              if (!Number.isNaN(fs)) bestBubble.fontSize = fs
+              const ff = textEl.getAttribute('font-family')
+              if (ff) bestBubble.fontFamily = ff
+              const fw = textEl.getAttribute('font-weight')
+              if (fw) bestBubble.fontWeight = fw
+            }
+            // Append to existing text (handles old SVGs with separate <text> elements per line)
+            bestBubble.text = bestBubble.text ? bestBubble.text + '\n' + content : content
             continue
           }
         }

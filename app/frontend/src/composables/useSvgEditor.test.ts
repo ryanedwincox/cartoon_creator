@@ -148,6 +148,98 @@ describe('importSvg tspan parsing', () => {
     expect(editor.bubbles.value[0]!.text).toBe('Legacy text')
   })
 
+  it('merges separate text elements over same bubble into multiline text', () => {
+    const editor = createEditor()
+    const svg = `<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 500 500">
+      <g id="art-layer"></g>
+      <g id="bubbles-layer">
+        <rect x="80" y="40" width="520" height="190" rx="30" ry="30" stroke="black" stroke-width="12" fill="white"/>
+      </g>
+      <g id="text-layer">
+        <text x="340" y="125" text-anchor="middle" font-family="'Anime Ace 2 BB', sans-serif" font-size="38" font-weight="bold" fill="black">Line one</text>
+        <text x="340" y="175" text-anchor="middle" font-family="'Anime Ace 2 BB', sans-serif" font-size="38" font-weight="bold" fill="black">Line two</text>
+      </g>
+    </svg>`
+
+    editor.importSvg(svg)
+
+    expect(editor.bubbles.value.length).toBe(1)
+    expect(editor.bubbles.value[0]!.text).toBe('Line one\nLine two')
+    expect(editor.bubbles.value[0]!.fontSize).toBe(38)
+  })
+
+  it('merges three separate text elements over same bubble', () => {
+    const editor = createEditor()
+    const svg = `<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 500 500">
+      <g id="art-layer"></g>
+      <g id="bubbles-layer">
+        <rect x="50" y="50" width="400" height="200" rx="30" ry="30" stroke="black" stroke-width="12" fill="white"/>
+      </g>
+      <g id="text-layer">
+        <text x="250" y="110" text-anchor="middle" font-size="36" fill="black">First</text>
+        <text x="250" y="150" text-anchor="middle" font-size="36" fill="black">Second</text>
+        <text x="250" y="190" text-anchor="middle" font-size="36" fill="black">Third</text>
+      </g>
+    </svg>`
+
+    editor.importSvg(svg)
+
+    expect(editor.bubbles.value.length).toBe(1)
+    expect(editor.bubbles.value[0]!.text).toBe('First\nSecond\nThird')
+  })
+
+  // Backward compat: old SVGs with separate <text> elements per line place the
+  // canonical font styling on the first element. We lock to first-element semantics
+  // so re-imported legacy SVGs preserve the original font-size/family/weight.
+  it('uses font attributes from first matching text element only', () => {
+    const editor = createEditor()
+    const svg = `<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 500 500">
+      <g id="art-layer"></g>
+      <g id="bubbles-layer">
+        <rect x="100" y="100" width="200" height="100" rx="30" ry="30" stroke="black" stroke-width="12" fill="white"/>
+      </g>
+      <g id="text-layer">
+        <text x="200" y="135" text-anchor="middle" font-size="42" font-family="'Anime Ace 2 BB', sans-serif" font-weight="bold" fill="black">Line A</text>
+        <text x="200" y="165" text-anchor="middle" font-size="36" font-family="monospace" fill="black">Line B</text>
+      </g>
+    </svg>`
+
+    editor.importSvg(svg)
+
+    expect(editor.bubbles.value[0]!.text).toBe('Line A\nLine B')
+    // Font attributes come from the first text element
+    expect(editor.bubbles.value[0]!.fontSize).toBe(42)
+    expect(editor.bubbles.value[0]!.fontFamily).toBe("'Anime Ace 2 BB', sans-serif")
+    expect(editor.bubbles.value[0]!.fontWeight).toBe('bold')
+  })
+
+  // Regression guard: single text element must not break when merge logic
+  // joins multiple <text> elements — ensures the common single-element case still works.
+  it('imports single text element over bubble without merge artifacts', () => {
+    const editor = createEditor()
+    const svg = `<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 500 500">
+      <g id="art-layer"></g>
+      <g id="bubbles-layer">
+        <rect x="100" y="100" width="200" height="100" rx="30" ry="30" stroke="black" stroke-width="12" fill="white"/>
+      </g>
+      <g id="text-layer">
+        <text x="200" y="150" text-anchor="middle" font-size="40" font-family="'Anime Ace 2 BB', sans-serif" font-weight="bold" fill="black">Only line</text>
+      </g>
+    </svg>`
+
+    editor.importSvg(svg)
+
+    expect(editor.bubbles.value.length).toBe(1)
+    const bubble = editor.bubbles.value[0]!
+    expect(bubble.text).toBe('Only line')
+    // No trailing/leading newlines from merge logic
+    expect(bubble.text).not.toMatch(/^\n|\n$/)
+    // Font attrs applied from the single element
+    expect(bubble.fontSize).toBe(40)
+    expect(bubble.fontFamily).toBe("'Anime Ace 2 BB', sans-serif")
+    expect(bubble.fontWeight).toBe('bold')
+  })
+
   it('converts NBSP tspan content back to empty lines on import', () => {
     const editor = createEditor()
     const svg = `<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 500 500">
