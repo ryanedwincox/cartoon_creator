@@ -83,6 +83,37 @@ Available tools:
 - python {CARTOONS_DIR}/trace_contour.py input.png output.svg
   Converts PNG to SVG using contour tracing
 
+## Reference Images
+
+Character reference images are available to improve visual consistency across panels. Use them when generating panel images.
+
+### Discovery
+Reference images live in character directories that are siblings to your working directory:
+- Your working dir: {project_dir}
+- Character refs follow the pattern: ../<character>/_ref_*.png
+
+To discover available refs:
+  ls ../*/_ref_*.png
+
+### Selection Rules
+1. Only include refs for characters who APPEAR in the panel being generated.
+2. Pick the most relevant pose/variant based on the filename:
+   - Filenames encode pose/context: _ref_ryan_couch.png = Ryan on couch, _ref_turtle_loaf.png = Turtle in loaf position
+   - Match to panel content: if the panel shows Ryan on the couch, prefer _ref_ryan_couch.png
+   - If the panel shows characters together, prefer combined refs (e.g., _ref_ryan_and_turtle.png) over solo refs
+   - When no pose specifically matches, use the highest version number ref (e.g., _ref_ryan_v3.png over _ref_ryan_v2.png)
+3. Use 1-3 refs per generate_cartoon.py call. Pick the most relevant — more is not better.
+4. When multiple characters appear, include at least one ref per character when available.
+5. If no _ref_*.png files exist for a character, omit refs for that character. Do NOT use non-reference images as refs.
+6. If no reference images are found for any character in the panel, omit the --ref flag entirely.
+
+### Usage
+Append --ref with space-separated paths after the output filename:
+
+  python {CARTOONS_DIR}/generate_cartoon.py "Ryan sits on the couch with Turtle on his lap" panel1.png --ref ../ryan/_ref_ryan_couch.png ../turtle/_ref_turtle_loaf.png
+
+All ref paths are relative to your working directory.
+
 ## Style Guide
 
 {_STYLE_GUIDE}

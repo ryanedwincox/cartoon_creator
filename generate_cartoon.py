@@ -1,6 +1,6 @@
+# CLI tool: Generates cartoon images via Gemini API from text descriptions. I/O: (description, refs) -> PNG file
 import urllib.request
 import urllib.error
-import glob
 import io
 import json
 import base64
@@ -37,9 +37,7 @@ with open(os.path.join(script_dir, "style.md")) as f:
 
 prompt = f"{style}\n\n{description}"
 
-# Find _ref_* images in the working directory, plus any --ref args
-ref_files = sorted(glob.glob(os.path.join(script_dir, "_ref_*")))
-ref_files = [f for f in ref_files if os.path.isfile(f)]
+ref_files = []
 for er in extra_refs:
     path = er if os.path.isabs(er) else os.path.join(os.getcwd(), er)
     if os.path.isfile(path):
