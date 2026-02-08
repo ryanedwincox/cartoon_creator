@@ -5,12 +5,17 @@ Follow these steps in order when creating a comic.
 
 ## Step 1: Comic Concept
 
-Create a file called `comic-concept.txt` in the project directory. This file is the blueprint for the entire comic. For each panel, include:
+Create a file called `comic-concept.txt` in the project directory. This file is the blueprint for the entire comic.
+
+Before writing the concept file, discover available reference images by running `ls ../*/_ref_*.png` so you can assign the best-matching refs to each panel. If no reference images are found, note this to the user before proceeding.
+
+For each panel, include:
 
 1. **Panel number** (Panel 1, Panel 2, etc.)
 2. **Image description** - Detailed visual description of the scene, characters, poses, expressions, and background elements. Describe everything the image should contain.
-3. **Dialog/text** - The speech bubble text or captions for the panel.
-4. **ASCII sketch** - A rough ASCII art layout showing character placement, speech bubble positions, and composition.
+3. **Reference images** - Which `_ref_*.png` files to pass via `--ref` when generating this panel's image. Pick refs that match the characters and poses in the panel, following the Reference Images selection rules above in this prompt. List paths relative to the project directory (your working directory). If no refs match, write "None" — this panel will not have character reference guidance and may have less consistent rendering.
+4. **Dialog/text** - The speech bubble text or captions for the panel.
+5. **ASCII sketch** - A rough ASCII art layout showing character placement, speech bubble positions, and composition.
 
 Example format:
 
@@ -18,6 +23,7 @@ Example format:
 Panel 1
 -------
 Image: Ryan standing at a kitchen counter, looking confused at a recipe book. Turtle sits on the counter next to the book, looking smug.
+Refs: ../ryan/_ref_ryan_v3.png, ../turtle/_ref_turtle_loaf.png
 Dialog: Ryan: "This recipe says 'add a pinch of salt'..." / Turtle: "I ate the salt."
 ASCII sketch:
 +---------------------------+
@@ -38,6 +44,7 @@ After the user approves the concept, generate PNG images one panel at a time:
 
 - Use `python generate_cartoon.py "<description>" panel1.png` for each panel.
 - Pass the **image description** from the concept file as the prompt. Include the ASCII sketch for composition guidance.
+- Append `--ref` with the **reference images listed in the concept file** for that panel. The concept file already specifies which refs to use, so follow it directly.
 - Do **not** include text or dialog in the image generation prompt unless the user explicitly asks for rendered text. The image should be artwork only.
 - Name files sequentially: `panel1.png`, `panel2.png`, etc.
 
