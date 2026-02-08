@@ -1,7 +1,7 @@
 <!-- [Component]: SVG editor modal shell. Responsible for loading SVG files, autosaving periodically and on close, providing editor instance via inject, and keyboard shortcut routing. NOT concerned with canvas rendering or drawing logic. -->
 <script setup lang="ts">
 import { ref, computed, onMounted, onUnmounted, provide } from 'vue'
-import { useSvgEditor } from '../../composables/useSvgEditor'
+import { useSvgEditor, preloadFontForExport } from '../../composables/useSvgEditor'
 import SvgCanvas from './SvgCanvas.vue'
 import Toolbar from './Toolbar.vue'
 import LayersPanel from './LayersPanel.vue'
@@ -136,6 +136,9 @@ const handleKeyDown = (e: KeyboardEvent) => {
 }
 
 onMounted(async () => {
+  // Fire-and-forget: preload font for SVG export embedding (cache populated before user exports)
+  preloadFontForExport()
+
   // Load SVG content
   try {
     const res = await fetch(`${DATA_BASE}/${props.projectId}/${props.filename}`)

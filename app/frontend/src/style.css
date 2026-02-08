@@ -1,5 +1,30 @@
 /* Cartoons App - Global Styles */
 
+/* Anime Ace 2 BB — standard comic lettering font */
+@font-face {
+  font-family: 'Anime Ace 2 BB';
+  src: url('/fonts/animeace2_reg.ttf') format('truetype');
+  font-weight: normal;
+  font-style: normal;
+  font-display: swap;
+}
+
+@font-face {
+  font-family: 'Anime Ace 2 BB';
+  src: url('/fonts/animeace2_ital.ttf') format('truetype');
+  font-weight: normal;
+  font-style: italic;
+  font-display: swap;
+}
+
+@font-face {
+  font-family: 'Anime Ace 2 BB';
+  src: url('/fonts/animeace2_bld.ttf') format('truetype');
+  font-weight: bold;
+  font-style: normal;
+  font-display: swap;
+}
+
 /* Mobile-first responsive utilities */
 .container {
   max-width: 100%;

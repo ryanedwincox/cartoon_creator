@@ -2,6 +2,40 @@
 import { ref, reactive, computed } from 'vue'
 import { translatePathD, parseTailFromPolygon, parseTailFromPath, getPathBoundsFromD, scalePathD } from '../utils/svgPathUtils'
 
+// Module-level font cache — shared across all useSvgEditor instances because
+// exportSvg() is synchronous and cannot fetch at call time. Preloaded eagerly
+// via preloadFontForExport() so the cache is populated before any export.
+const FONT_BOLD_PATH = '/fonts/animeace2_bld.ttf'
+let fontBase64Cache: string | null = null
+let fontPreloadPromise: Promise<void> | null = null
+
+// Fetch bold TTF, convert to base64, cache. Promise-guarded against concurrent calls.
+export function preloadFontForExport(): Promise<void> {
+  if (fontBase64Cache !== null) return Promise.resolve()
+  if (fontPreloadPromise) return fontPreloadPromise
+  fontPreloadPromise = (async () => {
+    try {
+      const response = await fetch(FONT_BOLD_PATH)
+      if (!response.ok) throw new Error(`Font fetch failed: ${response.status}`)
+      const buffer = await response.arrayBuffer()
+      const bytes = new Uint8Array(buffer)
+      // Convert to binary string in 8KB chunks to avoid stack overflow with Function.apply
+      const CHUNK_SIZE = 8192
+      let binaryStr = ''
+      for (let i = 0; i < bytes.length; i += CHUNK_SIZE) {
+        const chunk = bytes.subarray(i, Math.min(i + CHUNK_SIZE, bytes.length))
+        binaryStr += String.fromCharCode(...chunk)
+      }
+      fontBase64Cache = btoa(binaryStr)
+    } catch {
+      // Graceful degradation — export will omit embedded font, still functional
+    } finally {
+      fontPreloadPromise = null
+    }
+  })()
+  return fontPreloadPromise
+}
+
 export type Tool = 'select' | 'node' | 'draw' | 'erase' | 'bubble' | 'text'
 export type Layer = 'art' | 'bubbles' | 'text'
 
@@ -503,6 +537,20 @@ export function useSvgEditor() {
     const bubbleElements = bubbles.value
 
     let svg = `<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 ${sourceWidth.value} ${sourceHeight.value}">\n`
+
+    // Embed font as base64 @font-face so exported SVGs render correctly on any system
+    if (fontBase64Cache) {
+      svg += `  <defs>
+    <style>
+      @font-face {
+        font-family: 'Anime Ace 2 BB';
+        src: url('data:font/ttf;base64,${fontBase64Cache}') format('truetype');
+        font-weight: bold;
+        font-style: normal;
+      }
+    </style>
+  </defs>\n`
+    }
 
     // Art layer
     svg += `  <g id="art-layer">\n`
