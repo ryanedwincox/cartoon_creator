@@ -20,10 +20,11 @@
 |  +--------------------------------------------+  |
 |  | Agent                                      |  | <- message.assistant (left-aligned)
 |  | "assistant text"                           |  |
+|  |                                     0:15   |  | <- elapsed-timer (last msg, done)
 |  +--------------------------------------------+  |
 |                                                  |
 |  +--------------------------------------------+  |
-|  | * * *  Sending... / Agent is thinking...   |  | <- thinking-indicator (cond)
+|  | * * *  Thinking...                         |  | <- thinking-indicator (cond)
 |  |                                     0:05   |  |
 |  +--------------------------------------------+  |
 |                                                  |
@@ -33,7 +34,6 @@
 |  |                                     0:12   |  |
 |  +--------------------------------------------+  |
 |                                                  |
-|  [checkmark] Completed in 0:15                   | <- completion-flash (cond)
 |  Interrupted at 0:08                             | <- completion-flash.interrupted (cond)
 |  Error after 0:03                                | <- completion-flash.error (cond)
 |                                                  | <- messages (scrollable)
@@ -51,11 +51,10 @@
 | message.assistant    | div           | assistant message content          | messages        | per message where role=assistant         |
 | message-images       | img[]         | -                                  | messages        | msg.images?.length > 0                   |
 | thinking-dots        | span x3       | -                                  | messages        | agentPhase in (sending, waiting)         |
-| thinking-text        | span          | "Sending..." / "Agent is thinking..."| messages      | agentPhase in (sending, waiting)         |
-| elapsed-timer        | span          | /\d+s|\d+:\d{2}/                   | messages        | agentPhase not idle                      |
+| thinking-text        | span          | "Thinking..."                      | messages        | agentPhase in (sending, waiting)         |
+| elapsed-timer        | span          | /\d+s|\d+:\d{2}/                   | messages        | agentPhase not idle; also on last assistant msg when done |
 | streaming response   | div           | partial response + cursor          | messages        | agentPhase=streaming                     |
 | typing-indicator     | span          | block cursor                       | messages        | agentPhase=streaming                     |
-| completion-flash     | div           | "Completed in ..."                 | messages        | agentPhase=done                          |
 | interrupted-flash    | div           | "Interrupted at ..."               | messages        | agentPhase=interrupted                   |
 | error-flash          | div           | "Error after ..."                  | messages        | agentPhase=error                         |
 | textarea             | textarea      | -                                  | chat-input      | always (disabled when streaming)         |
@@ -65,10 +64,10 @@
 | state        | visual changes                                                        |
 |--------------|-----------------------------------------------------------------------|
 | idle         | No activity indicators shown. Input enabled.                          |
-| sending      | Thinking dots + "Sending..." + timer running. Input disabled.         |
-| waiting      | Thinking dots + "Agent is thinking..." + timer running. Input disabled.|
+| sending      | Thinking dots + "Thinking..." + timer running. Input disabled.        |
+| waiting      | Thinking dots + "Thinking..." + timer running. Input disabled.        |
 | streaming    | Streaming message bubble with typing cursor + timer. Input disabled.  |
-| done         | Completion flash with checkmark + final elapsed time. Input enabled.  |
+| done         | Final message bubble with frozen elapsed timer. Input enabled (2s).   |
 | error        | Error flash with elapsed time. Input enabled.                         |
 | interrupted  | Interrupted flash with elapsed time. Input enabled.                   |
 

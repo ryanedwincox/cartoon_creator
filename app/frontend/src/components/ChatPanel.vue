@@ -100,19 +100,22 @@ const handleKeyDown = async (e: KeyboardEvent) => {
             class="message-image"
           />
         </div>
+
+        <!-- Frozen elapsed timer on the last assistant message when done -->
+        <div v-if="msg.role === 'assistant' && idx === messages.length - 1 && agentPhase === 'done'" class="stream-meta">
+          <span class="elapsed-timer">{{ elapsedFormatted }}</span>
+        </div>
       </div>
 
       <!-- Agent activity indicator -->
       <template v-if="agentPhase !== 'idle'">
 
-        <!-- Sending/Waiting state: thinking dots + timer -->
+        <!-- Thinking state (sending + waiting): dots + timer -->
         <div v-if="agentPhase === 'sending' || agentPhase === 'waiting'" class="thinking-indicator">
           <div class="thinking-dots">
             <span></span><span></span><span></span>
           </div>
-          <span class="thinking-text">
-            {{ agentPhase === 'sending' ? 'Sending...' : 'Agent is thinking...' }}
-          </span>
+          <span class="thinking-text">Thinking...</span>
           <span class="elapsed-timer">{{ elapsedFormatted }}</span>
         </div>
 
@@ -123,12 +126,6 @@ const handleKeyDown = async (e: KeyboardEvent) => {
           <div class="stream-meta">
             <span class="elapsed-timer">{{ elapsedFormatted }}</span>
           </div>
-        </div>
-
-        <!-- Done state: completion flash -->
-        <div v-if="agentPhase === 'done'" class="completion-flash">
-          <span class="completion-icon">✓</span>
-          <span>Completed in {{ elapsedFormatted }}</span>
         </div>
 
         <!-- Interrupted state -->
@@ -363,9 +360,9 @@ const handleKeyDown = async (e: KeyboardEvent) => {
   border-radius: 1rem;
   align-self: flex-start;
   font-size: 0.85rem;
-  color: var(--tag-completed);
+  color: var(--text-muted);
   background: var(--card-bg);
-  border: 1px solid var(--tag-completed);
+  border: 1px solid var(--border);
   animation: fade-in 0.3s ease-out;
 }
 
@@ -377,10 +374,6 @@ const handleKeyDown = async (e: KeyboardEvent) => {
 .completion-flash.error {
   color: var(--error);
   border-color: var(--error);
-}
-
-.completion-icon {
-  font-weight: bold;
 }
 
 @keyframes fade-in {
