@@ -272,3 +272,111 @@ describe('dy centering formula', () => {
     expect(dy3).toBeCloseTo(-40.8, 1)
   })
 })
+
+describe('seam cover removal and tail inset', () => {
+  it('exported SVG contains no seam cover rect', () => {
+    const editor = createEditor()
+    editor.bubbles.value.push({
+      id: 'b1',
+      x: 100, y: 100, width: 200, height: 100,
+      tailX: 350, tailY: 150,
+      text: '',
+      layer: 'bubbles',
+      strokeWidth: 12,
+      rx: 30, ry: 30,
+    })
+
+    const svg = editor.exportSvg()
+    const doc = new DOMParser().parseFromString(svg, 'image/svg+xml')
+    const bubblesLayer = doc.getElementById('bubbles-layer')!
+
+    // Should have exactly 1 rect (with rx) and 1 path — no plain seam cover rect
+    const allRects = bubblesLayer.querySelectorAll('rect')
+    const roundedRects = bubblesLayer.querySelectorAll('rect[rx]')
+    const paths = bubblesLayer.querySelectorAll('path')
+
+    expect(allRects.length).toBe(1) // only the rounded rect
+    expect(roundedRects.length).toBe(1)
+    expect(paths.length).toBe(1)
+  })
+
+  it('tail base is inset by strokeWidth/2 from bubble edge (right tail)', () => {
+    const editor = createEditor()
+    editor.bubbles.value.push({
+      id: 'b1',
+      x: 100, y: 100, width: 200, height: 100,
+      tailX: 350, tailY: 150,
+      text: '',
+      layer: 'bubbles',
+      strokeWidth: 12,
+      rx: 30, ry: 30,
+    })
+
+    const svg = editor.exportSvg()
+    const doc = new DOMParser().parseFromString(svg, 'image/svg+xml')
+    const pathEl = doc.querySelector('#bubbles-layer path')!
+    const d = pathEl.getAttribute('d')!
+
+    // Tail is to the right, so base X should be 300 - 6 = 294 (bx + bw - sw/2)
+    const coords = d.match(/[\d.]+/g)!.map(Number)
+    // M base1X base1Y L tipX tipY L base2X base2Y
+    const base1X = coords[0]!
+    const base2X = coords[4]!
+    expect(base1X).toBeCloseTo(294, 0)
+    expect(base2X).toBeCloseTo(294, 0)
+  })
+
+  it('tail base is inset by strokeWidth/2 from bubble edge (bottom tail)', () => {
+    const editor = createEditor()
+    editor.bubbles.value.push({
+      id: 'b1',
+      x: 100, y: 100, width: 200, height: 100,
+      tailX: 200, tailY: 250,
+      text: '',
+      layer: 'bubbles',
+      strokeWidth: 12,
+      rx: 30, ry: 30,
+    })
+
+    const svg = editor.exportSvg()
+    const doc = new DOMParser().parseFromString(svg, 'image/svg+xml')
+    const pathEl = doc.querySelector('#bubbles-layer path')!
+    const d = pathEl.getAttribute('d')!
+
+    // Tail is below, so base Y should be 200 - 6 = 194 (by + bh - sw/2)
+    const coords = d.match(/[\d.]+/g)!.map(Number)
+    const base1Y = coords[1]!
+    const base2Y = coords[5]!
+    expect(base1Y).toBeCloseTo(194, 0)
+    expect(base2Y).toBeCloseTo(194, 0)
+  })
+
+  it('imports old SVG with seam cover rect correctly', () => {
+    const editor = createEditor()
+    // Old 3-element structure: rect + path + seam cover rect (no rx on seam rect)
+    const svg = `<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 500 500">
+      <g id="art-layer"></g>
+      <g id="bubbles-layer">
+        <rect x="100" y="100" width="200" height="100" rx="30" ry="30" stroke="black" stroke-width="12" fill="white"/>
+        <path d="M 300 130 L 350 150 L 300 170" fill="white" stroke="black" stroke-width="12" stroke-linejoin="round"/>
+        <rect x="293" y="143" width="14" height="14" fill="white"/>
+      </g>
+      <g id="text-layer">
+        <text x="200" y="150" text-anchor="middle" font-size="48" font-weight="bold">
+          <tspan x="200" dy="16.8">Hello</tspan>
+        </text>
+      </g>
+    </svg>`
+
+    editor.importSvg(svg)
+
+    // Seam rect has no rx/ry, so importSvg ignores it — only 1 bubble should be imported
+    expect(editor.bubbles.value.length).toBe(1)
+    const bubble = editor.bubbles.value[0]!
+    expect(bubble.x).toBe(100)
+    expect(bubble.y).toBe(100)
+    expect(bubble.width).toBe(200)
+    expect(bubble.height).toBe(100)
+    expect(bubble.text).toBe('Hello')
+  })
+})

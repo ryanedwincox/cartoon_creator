@@ -51,28 +51,12 @@ Convert each generated PNG to SVG:
 
 ## Step 4: Add Speech Bubbles
 
-Edit each SVG to add speech bubbles in a dedicated `<g id="bubbles-layer">` group. Do not add text yet — just the empty bubble shapes. Every bubble must use this exact structure:
-
-```xml
-<g id="bubbles-layer">
-  <!-- 1. Main bubble: rounded rectangle -->
-  <rect x="{X}" y="{Y}" width="{W}" height="{H}" rx="30" ry="30"
-        stroke="black" stroke-width="12" fill="white"/>
-
-  <!-- 2. Tail: triangular pointer toward the speaker -->
-  <path d="M {bx},{ty} L {tx},{tm} L {bx},{by}"
-        fill="white" stroke="black" stroke-width="12" stroke-linejoin="round"/>
-
-  <!-- 3. Seam cover: small white rect hiding the stroke where tail meets bubble -->
-  <rect x="{cx}" y="{cy}" width="14" height="14" fill="white"/>
-</g>
-```
+Edit each SVG to add speech bubbles in a dedicated `<g id="bubbles-layer">` group. Do not add text yet — just the empty bubble shapes. Every bubble must use the exact structure defined in the Style Guide's "Speech Bubble Implementation" section (in style.md). Each bubble MUST have exactly ONE rect and ONE tail path. Do not add extra elements or deviate from that structure.
 
 Rules:
 - **Stroke width**: 12px on both the rect and the tail path. Must match.
 - **Corner radius**: rx/ry="30" for the rounded rectangle.
-- **Tail**: A triangular `<path>` with `stroke-linejoin="round"`. Base edge sits flush against the bubble rect edge. Point toward the speaker.
-- **Seam cover**: A small white `<rect>` (no stroke) over the joint where tail meets bubble. ~14x14 at stroke-width 12.
+- **Tail**: A triangular `<path>` with `stroke-linejoin="round"`. The tail base is inset by half the stroke width from the bubble edge. Point toward the speaker.
 - **Tail direction**: Point toward the speaking character. For off-screen speakers, point toward the panel edge.
 
 ## Step 5: Add Text

@@ -11,8 +11,7 @@
 |  |    <path .selected? />...                   |         |
 |  |                                             |         |
 |  |  [#bubbles-layer]                           |         |
-|  |    <rect rounded /> + <path tail /> +       |         |
-|  |    <rect seam-cover />...                   |         |
+|  |    <rect rounded /> + <path tail />...      |         |
 |  |                                             |         |
 |  |  [#text-layer]                              |         |
 |  |    <text bubble-text />...                  |         |
@@ -37,6 +36,14 @@
 |  |                                             |         |
 |  |    [sw]            [se]                     |         |
 |  |                                             |         |
+|  |  [bubble-handles: 8x white squares]         |         |
+|  |    [nw]   [n]   [ne]                        |         |
+|  |    [w]           [e]                         |         |
+|  |    [sw]   [s]   [se]                        |         |
+|  |                                             |         |
+|  |  [tail-handle: yellow circle]               |         |
+|  |    (o) at tailX,tailY                       |         |
+|  |                                             |         |
 |  +--------------------------------------------+         |
 |                                                          |
 +----------------------------------------------------------+
@@ -48,13 +55,15 @@
 | viewport bg        | rect         | fill=#e5e7eb, covers viewBox                      | root    | always                          |
 | canvas             | rect         | white fill, stroke=#d1d5db                        | root    | always                          |
 | path               | path         | per PathData, .selected highlight                 | art     | v-show layerVisibility.art      |
-| bubble group       | g > rect+path+rect | rounded rect + tail path + seam cover rect | bubbles | v-show layerVisibility.bubbles  |
+| bubble group       | g > rect+path  | rounded rect + tail path                   | bubbles | v-show layerVisibility.bubbles  |
 | bubble text        | text         | centered in bubble rect                           | text    | v-show layerVisibility.text     |
 | standalone text    | text / foreignObject | inline editing via foreignObject          | text    | v-show layerVisibility.text     |
 | drawing preview    | path         | opacity=0.5, current stroke                      | overlay | isDrawing && currentPathD       |
 | marquee rect       | rect         | dashed indigo fill+stroke                         | overlay | isMarqueeActive && has size     |
 | bounding box       | rect         | dashed indigo stroke, no fill, pointer-events=none| overlay | selectionBounds non-null        |
-| corner handles     | rect x4      | white fill, indigo stroke, constant screen size   | overlay | selectionBounds non-null        |
+| corner handles     | rect x4      | white fill, indigo stroke, constant screen size   | overlay | selectionBounds && !singleBubble|
+| bubble handles     | rect x8      | 4 corners + 4 edge midpoints on bubble rect       | overlay | singleSelectedBubble non-null   |
+| tail handle        | circle       | yellow fill (#fbbf24), indigo stroke, at tailX/Y  | overlay | singleSelectedBubble non-null   |
 
 ## States
 
@@ -66,4 +75,6 @@
 | dragging  | grabbing      | select tool + element mousedown      |
 | marquee   | crosshair     | select tool + canvas mousedown       |
 | resizing  | nwse/nesw     | corner handle mousedown              |
+| b-resize  | per-handle    | bubble handle mousedown (free/x/y)   |
+| tail-drag | move          | tail handle mousedown                |
 | text-edit | text          | text tool + click / dblclick         |

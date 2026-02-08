@@ -49,20 +49,26 @@ const resizeInitialDist = ref(0)
 const resizeDidMove = ref(false)
 const resizeSnapshot = ref<UndoState | null>(null)
 
+// Bubble-specific resize state
+const isBubbleResizing = ref(false)
+const bubbleResizeHandleId = ref<string | null>(null)
+const bubbleResizeAnchor = ref<Point>({ x: 0, y: 0 })
+const bubbleResizeInitialDistX = ref(0)
+const bubbleResizeInitialDistY = ref(0)
+const bubbleResizeDidMove = ref(false)
+const bubbleResizeSnapshot = ref<UndoState | null>(null)
+const bubbleResizeConstraint = ref<'free' | 'x' | 'y'>('free')
+
+// Tail drag state
+const isDraggingTail = ref(false)
+const draggingTailBubbleId = ref<string | null>(null)
+const tailDragDidMove = ref(false)
+
 // Touch state for pinch zoom and touch pan
 const activeTouchCount = ref(0)
 const initialPinchDistance = ref(0)
 const initialPinchZoom = ref(1)
 const lastTouchMidpoint = ref<Point>({ x: 0, y: 0 })
-
-/** Pre-computed tail render data keyed by bubble id — avoids redundant geometry in template. */
-const bubbleTailData = computed(() => {
-  const map = new Map<string, ReturnType<typeof editor.bubbleTailRender>>()
-  for (const bubble of editor.bubbles.value) {
-    map.set(bubble.id, editor.bubbleTailRender(bubble))
-  }
-  return map
-})
 
 /** Pre-computed text lines and resolved fontSize keyed by bubble id — avoids redundant split/nullish in template. */
 const bubbleTextLines = computed(() => {
@@ -125,6 +131,47 @@ const cornerHandles = computed(() => {
     { id: 'sw', cx: x, cy: y + height, cursor: 'nesw-resize' },
     { id: 'se', cx: x + width, cy: y + height, cursor: 'nwse-resize' },
   ]
+})
+
+/** Detect when exactly one bubble is selected — enables bubble-specific handles. */
+const singleSelectedBubble = computed(() => {
+  if (editor.selectedIds.value.size !== 1) return null
+  const id = editor.selectedIds.value.values().next().value as string
+  return editor.bubbles.value.find(b => b.id === id) ?? null
+})
+
+/** Bounding box of the bubble rect only (excludes tail tip). */
+const bubbleRectBounds = computed(() => {
+  const b = singleSelectedBubble.value
+  if (!b) return null
+  return { x: b.x, y: b.y, width: b.width, height: b.height }
+})
+
+/** Active bounding box: bubble rect when single bubble selected, else generic selection bounds. */
+const activeBounds = computed(() => bubbleRectBounds.value ?? editor.selectionBounds.value)
+
+/** 8 handles (4 corners + 4 edge midpoints) on the single selected bubble's rect. */
+const bubbleHandles = computed(() => {
+  const b = singleSelectedBubble.value
+  if (!b) return []
+  const { x, y, width: w, height: h } = b
+  return [
+    { id: 'b-nw', cx: x,         cy: y,         cursor: 'nwse-resize', type: 'corner' as const },
+    { id: 'b-ne', cx: x + w,     cy: y,         cursor: 'nesw-resize', type: 'corner' as const },
+    { id: 'b-sw', cx: x,         cy: y + h,     cursor: 'nesw-resize', type: 'corner' as const },
+    { id: 'b-se', cx: x + w,     cy: y + h,     cursor: 'nwse-resize', type: 'corner' as const },
+    { id: 'b-n',  cx: x + w / 2, cy: y,         cursor: 'ns-resize',   type: 'edge' as const },
+    { id: 'b-s',  cx: x + w / 2, cy: y + h,     cursor: 'ns-resize',   type: 'edge' as const },
+    { id: 'b-e',  cx: x + w,     cy: y + h / 2, cursor: 'ew-resize',   type: 'edge' as const },
+    { id: 'b-w',  cx: x,         cy: y + h / 2, cursor: 'ew-resize',   type: 'edge' as const },
+  ]
+})
+
+/** Tail drag handle position — only visible when a single bubble is selected. */
+const tailHandle = computed(() => {
+  const b = singleSelectedBubble.value
+  if (!b) return null
+  return { cx: b.tailX, cy: b.tailY }
 })
 
 /** Convert screen-space coordinates to SVG viewBox coordinates via the current CTM. */
@@ -250,6 +297,18 @@ const handleMouseMove = (e: MouseEvent) => {
     return
   }
 
+  if (isBubbleResizing.value) {
+    const svgPt = getCanvasPoint(e)
+    if (svgPt) applyBubbleResize(svgPt)
+    return
+  }
+
+  if (isDraggingTail.value) {
+    const svgPt = getCanvasPoint(e)
+    if (svgPt) applyTailDrag(svgPt)
+    return
+  }
+
   if (isResizing.value) {
     const svgPt = getCanvasPoint(e)
     if (svgPt) applyResize(svgPt)
@@ -278,6 +337,16 @@ const handleMouseMove = (e: MouseEvent) => {
 const handleMouseUp = (e: MouseEvent) => {
   if (isPanning.value) {
     isPanning.value = false
+    return
+  }
+
+  if (isBubbleResizing.value) {
+    resetBubbleResizeState()
+    return
+  }
+
+  if (isDraggingTail.value) {
+    resetTailDragState()
     return
   }
 
@@ -345,6 +414,8 @@ const handleTouchStart = (e: TouchEvent) => {
     currentPath.value = []
     isMarqueeActive.value = false
     resetResizeState()
+    resetBubbleResizeState()
+    resetTailDragState()
     isPanning.value = true
 
     initialPinchDistance.value = getTouchDistance(t0, t1)
@@ -384,6 +455,18 @@ const handleTouchMove = (e: TouchEvent) => {
     return
   }
 
+  if (e.touches.length === 1 && isBubbleResizing.value) {
+    const svgPt = getCanvasPoint(e.touches[0]!)
+    if (svgPt) applyBubbleResize(svgPt)
+    return
+  }
+
+  if (e.touches.length === 1 && isDraggingTail.value) {
+    const svgPt = getCanvasPoint(e.touches[0]!)
+    if (svgPt) applyTailDrag(svgPt)
+    return
+  }
+
   if (e.touches.length === 1 && isResizing.value) {
     const svgPt = getCanvasPoint(e.touches[0]!)
     if (svgPt) applyResize(svgPt)
@@ -418,6 +501,20 @@ const handleTouchEnd = (e: TouchEvent) => {
     } else {
       activeTouchCount.value = e.touches.length
     }
+    return
+  }
+
+  if (isBubbleResizing.value) {
+    resetBubbleResizeState()
+    isPanning.value = false
+    activeTouchCount.value = e.touches.length
+    return
+  }
+
+  if (isDraggingTail.value) {
+    resetTailDragState()
+    isPanning.value = false
+    activeTouchCount.value = e.touches.length
     return
   }
 
@@ -553,6 +650,135 @@ const handleResizeTouchStart = (handleId: string, e: TouchEvent) => {
     e.stopPropagation()
     activeTouchCount.value = 1
     startResize(handleId)
+  }
+}
+
+/** Begin a bubble-specific resize from one of the 8 rect handles. */
+const startBubbleResize = (handleId: string) => {
+  const b = singleSelectedBubble.value
+  if (!b) return
+  const { x, y, width: w, height: h } = b
+  let anchor: Point, grab: Point, constraint: 'free' | 'x' | 'y'
+  switch (handleId) {
+    case 'b-nw': anchor = { x: x + w, y: y + h }; grab = { x, y };               constraint = 'free'; break
+    case 'b-ne': anchor = { x, y: y + h };         grab = { x: x + w, y };        constraint = 'free'; break
+    case 'b-sw': anchor = { x: x + w, y };         grab = { x, y: y + h };        constraint = 'free'; break
+    case 'b-se': anchor = { x, y };                 grab = { x: x + w, y: y + h }; constraint = 'free'; break
+    case 'b-n':  anchor = { x, y: y + h };         grab = { x, y };               constraint = 'y'; break
+    case 'b-s':  anchor = { x, y };                 grab = { x, y: y + h };        constraint = 'y'; break
+    case 'b-e':  anchor = { x, y };                 grab = { x: x + w, y };        constraint = 'x'; break
+    case 'b-w':  anchor = { x: x + w, y };         grab = { x, y };               constraint = 'x'; break
+    default: return
+  }
+  const distX = grab.x - anchor.x
+  const distY = grab.y - anchor.y
+  if (constraint === 'free' && Math.abs(distX) < 0.001 && Math.abs(distY) < 0.001) return
+  if (constraint === 'x' && Math.abs(distX) < 0.001) return
+  if (constraint === 'y' && Math.abs(distY) < 0.001) return
+  bubbleResizeHandleId.value = handleId
+  bubbleResizeAnchor.value = { ...anchor }
+  bubbleResizeInitialDistX.value = distX
+  bubbleResizeInitialDistY.value = distY
+  bubbleResizeDidMove.value = false
+  bubbleResizeSnapshot.value = null
+  bubbleResizeConstraint.value = constraint
+  isBubbleResizing.value = true
+}
+
+/** Apply bubble-specific resize from a new SVG point. */
+const applyBubbleResize = (svgPt: Point) => {
+  const anchor = bubbleResizeAnchor.value
+  const constraint = bubbleResizeConstraint.value
+  if (!bubbleResizeDidMove.value) {
+    const grabX = anchor.x + bubbleResizeInitialDistX.value
+    const grabY = anchor.y + bubbleResizeInitialDistY.value
+    const svgDist = Math.sqrt((svgPt.x - grabX) ** 2 + (svgPt.y - grabY) ** 2)
+    if (svgDist * editor.zoom.value < DRAG_THRESHOLD) return
+    editor.saveState()
+    bubbleResizeSnapshot.value = editor.createSnapshot()
+    bubbleResizeDidMove.value = true
+  }
+  let sx: number, sy: number
+  if (constraint === 'free') {
+    sx = (svgPt.x - anchor.x) / bubbleResizeInitialDistX.value
+    sy = (svgPt.y - anchor.y) / bubbleResizeInitialDistY.value
+  } else if (constraint === 'x') {
+    sx = (svgPt.x - anchor.x) / bubbleResizeInitialDistX.value
+    sy = 1.0
+  } else {
+    sx = 1.0
+    sy = (svgPt.y - anchor.y) / bubbleResizeInitialDistY.value
+  }
+  sx = Math.min(Math.max(sx, 0.05), 20)
+  sy = Math.min(Math.max(sy, 0.05), 20)
+  editor.scaleElements(editor.selectedIds.value, anchor.x, anchor.y, sx, sy, bubbleResizeSnapshot.value!)
+}
+
+/** Reset bubble resize state to idle. */
+const resetBubbleResizeState = () => {
+  isBubbleResizing.value = false
+  bubbleResizeHandleId.value = null
+  bubbleResizeDidMove.value = false
+  bubbleResizeSnapshot.value = null
+}
+
+/** Mousedown on a bubble rect handle — start bubble resize. */
+const handleBubbleResizeMouseDown = (handleId: string, e: MouseEvent) => {
+  e.stopPropagation()
+  startBubbleResize(handleId)
+}
+
+/** Touchstart on a bubble rect handle — start bubble resize. */
+const handleBubbleResizeTouchStart = (handleId: string, e: TouchEvent) => {
+  if (e.touches.length === 1) {
+    e.stopPropagation()
+    activeTouchCount.value = 1
+    startBubbleResize(handleId)
+  }
+}
+
+/** Begin tail drag on a bubble. */
+const startTailDrag = () => {
+  const b = singleSelectedBubble.value
+  if (!b) return
+  draggingTailBubbleId.value = b.id
+  isDraggingTail.value = true
+  tailDragDidMove.value = false
+}
+
+/** Apply tail drag movement from a new SVG point. */
+const applyTailDrag = (svgPt: Point) => {
+  if (!tailDragDidMove.value) {
+    const b = singleSelectedBubble.value
+    if (!b) return
+    const svgDist = Math.sqrt((svgPt.x - b.tailX) ** 2 + (svgPt.y - b.tailY) ** 2)
+    if (svgDist * editor.zoom.value < DRAG_THRESHOLD) return
+    editor.saveState()
+    tailDragDidMove.value = true
+  }
+  const id = draggingTailBubbleId.value
+  if (id) editor.updateBubble(id, { tailX: svgPt.x, tailY: svgPt.y })
+}
+
+/** Reset tail drag state to idle. */
+const resetTailDragState = () => {
+  isDraggingTail.value = false
+  draggingTailBubbleId.value = null
+  tailDragDidMove.value = false
+}
+
+/** Mousedown on the tail handle — start tail drag. */
+const handleTailMouseDown = (e: MouseEvent) => {
+  e.stopPropagation()
+  startTailDrag()
+}
+
+/** Touchstart on the tail handle — start tail drag. */
+const handleTailTouchStart = (e: TouchEvent) => {
+  if (e.touches.length === 1) {
+    e.stopPropagation()
+    activeTouchCount.value = 1
+    startTailDrag()
   }
 }
 
@@ -746,6 +972,11 @@ const textInputHeight = (textItem: { content: string; fontSize: number }): numbe
 
 const cursorStyle = computed(() => {
   if (isPanning.value || isSpacePressed.value) return 'grabbing'
+  if (isBubbleResizing.value) {
+    const h = bubbleHandles.value.find(h => h.id === bubbleResizeHandleId.value)
+    return h?.cursor ?? 'default'
+  }
+  if (isDraggingTail.value) return 'move'
   if (isResizing.value) {
     const handleId = resizeHandleId.value
     if (handleId === 'nw' || handleId === 'se') return 'nwse-resize'
@@ -818,7 +1049,7 @@ const cursorStyle = computed(() => {
       />
     </g>
 
-    <!-- Bubbles layer — style.md order: rect, tail path, seam cover -->
+    <!-- Bubbles layer — rect, tail path -->
     <g v-show="editor.layerVisibility.bubbles" id="bubbles-layer">
       <g
         v-for="bubble in editor.bubbles.value"
@@ -841,22 +1072,13 @@ const cursorStyle = computed(() => {
           :stroke-width="bubble.strokeWidth ?? editor.DEFAULT_STROKE_WIDTH"
           fill="white"
         />
-        <!-- Tail path (rendered after rect; seam cover hides overlap) -->
+        <!-- Tail path -->
         <path
-          :d="bubbleTailData.get(bubble.id)?.d"
+          :d="editor.bubbleTailPath(bubble)"
           fill="white"
           stroke="black"
           :stroke-width="bubble.strokeWidth ?? editor.DEFAULT_STROKE_WIDTH"
           stroke-linejoin="round"
-        />
-        <!-- Seam cover: hides stroke overlap where tail meets bubble -->
-        <rect
-          :x="bubbleTailData.get(bubble.id)?.seamX"
-          :y="bubbleTailData.get(bubble.id)?.seamY"
-          :width="bubbleTailData.get(bubble.id)?.seamSize"
-          :height="bubbleTailData.get(bubble.id)?.seamSize"
-          fill="white"
-          stroke="none"
         />
       </g>
     </g>
@@ -984,13 +1206,13 @@ const cursorStyle = computed(() => {
       pointer-events="none"
     />
 
-    <!-- Selection bounding box -->
+    <!-- Selection bounding box (uses bubble rect bounds when single bubble selected) -->
     <rect
-      v-if="editor.selectionBounds.value"
-      :x="editor.selectionBounds.value.x"
-      :y="editor.selectionBounds.value.y"
-      :width="editor.selectionBounds.value.width"
-      :height="editor.selectionBounds.value.height"
+      v-if="activeBounds"
+      :x="activeBounds.x"
+      :y="activeBounds.y"
+      :width="activeBounds.width"
+      :height="activeBounds.height"
       fill="none"
       stroke="#4f46e5"
       :stroke-width="boundingBoxStroke"
@@ -998,9 +1220,28 @@ const cursorStyle = computed(() => {
       pointer-events="none"
     />
 
-    <!-- Corner resize handles -->
+    <!-- Generic corner resize handles (hidden when single bubble selected) -->
+    <template v-if="!singleSelectedBubble">
+      <rect
+        v-for="handle in cornerHandles"
+        :key="handle.id"
+        :x="handle.cx - handleSizeSvg / 2"
+        :y="handle.cy - handleSizeSvg / 2"
+        :width="handleSizeSvg"
+        :height="handleSizeSvg"
+        fill="white"
+        stroke="#4f46e5"
+        :stroke-width="boundingBoxStroke"
+        :style="{ cursor: handle.cursor }"
+        pointer-events="all"
+        @mousedown.stop="handleResizeMouseDown(handle.id, $event)"
+        @touchstart.stop="handleResizeTouchStart(handle.id, $event)"
+      />
+    </template>
+
+    <!-- Bubble rect resize handles (8 handles: 4 corners + 4 edge midpoints) -->
     <rect
-      v-for="handle in cornerHandles"
+      v-for="handle in bubbleHandles"
       :key="handle.id"
       :x="handle.cx - handleSizeSvg / 2"
       :y="handle.cy - handleSizeSvg / 2"
@@ -1011,8 +1252,23 @@ const cursorStyle = computed(() => {
       :stroke-width="boundingBoxStroke"
       :style="{ cursor: handle.cursor }"
       pointer-events="all"
-      @mousedown.stop="handleResizeMouseDown(handle.id, $event)"
-      @touchstart.stop="handleResizeTouchStart(handle.id, $event)"
+      @mousedown.stop="handleBubbleResizeMouseDown(handle.id, $event)"
+      @touchstart.stop="handleBubbleResizeTouchStart(handle.id, $event)"
+    />
+
+    <!-- Tail drag handle (yellow circle at tail tip) -->
+    <circle
+      v-if="tailHandle"
+      :cx="tailHandle.cx"
+      :cy="tailHandle.cy"
+      :r="handleSizeSvg / 2"
+      fill="#fbbf24"
+      stroke="#4f46e5"
+      :stroke-width="boundingBoxStroke"
+      style="cursor: move"
+      pointer-events="all"
+      @mousedown.stop="handleTailMouseDown($event)"
+      @touchstart.stop="handleTailTouchStart($event)"
     />
   </svg>
 </template>
