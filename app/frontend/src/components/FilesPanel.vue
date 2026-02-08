@@ -107,6 +107,8 @@ const handleFileChange = async (event: Event) => {
 <style scoped>
 .files-panel {
   padding: 1rem;
+  height: 100%;
+  overflow-y: auto;
 }
 
 .files-header {

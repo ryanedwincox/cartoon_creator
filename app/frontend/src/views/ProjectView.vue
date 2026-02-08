@@ -151,6 +151,7 @@ const navigateFile = (direction: -1 | 1) => {
     <!-- Image Viewer -->
     <ImageViewer
       v-if="viewingImage"
+      :key="viewingImage"
       :project-id="id"
       :filename="viewingImage"
       :mtime="viewingImageMtime"
@@ -163,6 +164,7 @@ const navigateFile = (direction: -1 | 1) => {
     <!-- Text Viewer -->
     <TextViewer
       v-if="viewingText"
+      :key="viewingText"
       :filename="viewingText"
       :has-prev="hasPrev"
       :has-next="hasNext"
@@ -173,6 +175,7 @@ const navigateFile = (direction: -1 | 1) => {
     <!-- SVG Editor -->
     <SvgEditorModal
       v-if="editingSvg"
+      :key="editingSvg"
       :project-id="id"
       :filename="editingSvg"
       :has-prev="hasPrev"
