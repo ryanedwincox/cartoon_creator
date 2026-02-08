@@ -63,24 +63,19 @@ afterEach(() => {
 
 describe('useChat phase state machine', () => {
   it('follows happy path: idle → sending → waiting → streaming → done → idle', async () => {
-    // ReadableStream pull() needs real microtask scheduling; fake timers interfere
-    vi.useRealTimers()
-
     const phases: AgentPhase[] = []
 
     const scope = effectScope()
     await scope.run(async () => {
       const chat = useChat('test-project')
 
-      // Mock send with SSE stream — all events in one chunk for deterministic delivery
+      // Separate chunks so ReadableStream pull() delivers each event individually
       vi.mocked(fetch).mockResolvedValueOnce(
         mockFetchResponse([
-          sseChunk([
-            { type: 'started', content: '' },
-            { type: 'text', content: 'Hello ' },
-            { type: 'text', content: 'world' },
-            { type: 'done', content: 'Hello world', images: [] },
-          ]),
+          sseChunk([{ type: 'started', content: '' }]),
+          sseChunk([{ type: 'text', content: 'Hello ' }]),
+          sseChunk([{ type: 'text', content: 'world' }]),
+          sseChunk([{ type: 'done', content: 'Hello world', images: [] }]),
         ])
       )
 
@@ -98,8 +93,8 @@ describe('useChat phase state machine', () => {
       expect(phases).toContain('streaming')
       expect(phases).toContain('done')
 
-      // Wait for 2s idle timeout (real timers)
-      await new Promise(r => setTimeout(r, 2100))
+      // After 2s idle timeout
+      vi.advanceTimersByTime(2100)
       expect(chat.agentPhase.value).toBe('idle')
     })
     scope.stop()

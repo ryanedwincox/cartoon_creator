@@ -1,0 +1,82 @@
+# ChatPanel.ascii
+# Streaming chat interface for agent conversation within a project.
+
+## Component: ChatPanel
+## Layout: flex-column, full-height
+
+## Visual Structure:
++--------------------------------------------------+
+| [Clear]                          [Stop]          | <- chat-actions (top bar)
++--------------------------------------------------+
+|                                                  |
+|  Loading conversation...                         | <- loading (cond)
+|                                                  |
+|  +--------------------------------------------+  |
+|  |                          You               |  | <- message.user (right-aligned)
+|  |                    "user text"              |  |
+|  |                      [img] [img]           |  | <- message-images (cond)
+|  +--------------------------------------------+  |
+|                                                  |
+|  +--------------------------------------------+  |
+|  | Agent                                      |  | <- message.assistant (left-aligned)
+|  | "assistant text"                           |  |
+|  +--------------------------------------------+  |
+|                                                  |
+|  +--------------------------------------------+  |
+|  | * * *  Sending... / Agent is thinking...   |  | <- thinking-indicator (cond)
+|  |                                     0:05   |  |
+|  +--------------------------------------------+  |
+|                                                  |
+|  +--------------------------------------------+  |
+|  | Agent                                      |  | <- streaming response (cond)
+|  | "partial response text..."  |              |  | <- typing-indicator cursor
+|  |                                     0:12   |  |
+|  +--------------------------------------------+  |
+|                                                  |
+|  [checkmark] Completed in 0:15                   | <- completion-flash (cond)
+|  Interrupted at 0:08                             | <- completion-flash.interrupted (cond)
+|  Error after 0:03                                | <- completion-flash.error (cond)
+|                                                  | <- messages (scrollable)
++--------------------------------------------------+
+| [textarea: "Type a message..."]         [send]   | <- chat-input-container
++--------------------------------------------------+
+
+## Elements:
+| ascii                | type          | text_pattern                       | region          | cond                                    |
+|----------------------|---------------|------------------------------------|-----------------|------------------------------------------|
+| [Clear]              | button        | "Clear"                            | chat-actions    | always                                   |
+| [Stop]               | button        | "Stop"                             | chat-actions    | agentPhase in (waiting, streaming)       |
+| Loading...           | div           | "Loading conversation..."          | messages        | loading=true                             |
+| message.user         | div           | user message content               | messages        | per message where role=user              |
+| message.assistant    | div           | assistant message content          | messages        | per message where role=assistant         |
+| message-images       | img[]         | -                                  | messages        | msg.images?.length > 0                   |
+| thinking-dots        | span x3       | -                                  | messages        | agentPhase in (sending, waiting)         |
+| thinking-text        | span          | "Sending..." / "Agent is thinking..."| messages      | agentPhase in (sending, waiting)         |
+| elapsed-timer        | span          | /\d+s|\d+:\d{2}/                   | messages        | agentPhase not idle                      |
+| streaming response   | div           | partial response + cursor          | messages        | agentPhase=streaming                     |
+| typing-indicator     | span          | block cursor                       | messages        | agentPhase=streaming                     |
+| completion-flash     | div           | "Completed in ..."                 | messages        | agentPhase=done                          |
+| interrupted-flash    | div           | "Interrupted at ..."               | messages        | agentPhase=interrupted                   |
+| error-flash          | div           | "Error after ..."                  | messages        | agentPhase=error                         |
+| textarea             | textarea      | -                                  | chat-input      | always (disabled when streaming)         |
+| [send]               | button        | send icon (SVG arrow)              | chat-input      | always (disabled when empty or streaming)|
+
+## States:
+| state        | visual changes                                                        |
+|--------------|-----------------------------------------------------------------------|
+| idle         | No activity indicators shown. Input enabled.                          |
+| sending      | Thinking dots + "Sending..." + timer running. Input disabled.         |
+| waiting      | Thinking dots + "Agent is thinking..." + timer running. Input disabled.|
+| streaming    | Streaming message bubble with typing cursor + timer. Input disabled.  |
+| done         | Completion flash with checkmark + final elapsed time. Input enabled.  |
+| error        | Error flash with elapsed time. Input enabled.                         |
+| interrupted  | Interrupted flash with elapsed time. Input enabled.                   |
+
+## Interaction Model:
+| action              | trigger                        | effect                                  |
+|---------------------|--------------------------------|-----------------------------------------|
+| Send message        | Enter (no shift) or click send | sendMessage(), phase -> sending          |
+| Stop generation     | Click Stop button              | interrupt(), phase -> interrupted        |
+| Clear history       | Click Clear button             | clearHistory(), messages reset, phase -> idle |
+| Scroll              | Auto on messages/phase change  | scrollToBottom via watch                 |
+| Newline in input    | Shift+Enter                    | Inserts newline (no send)               |
