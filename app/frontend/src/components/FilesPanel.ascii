@@ -1,0 +1,61 @@
+# FilesPanel.ascii
+# Displays project file list with thumbnails/icons, sizes, upload, and click-to-open.
+
+## Component: FilesPanel
+## Layout: flex-column, padded
+
+## Visual Structure:
++--------------------------------------------------+
+|                                   [Upload File]   | <- files-header (hidden file input + button)
++--------------------------------------------------+
+|                                                   |
+|  Upload failed: "error message"                   | <- upload-error (cond)
+|                                                   |
+|  Loading files...                                 | <- loading (cond)
+|                                                   |
+|  No files yet. Start chatting to generate images! | <- empty (cond)
+|                                                   |
+|  +----------------------------------------------+ |
+|  | +------+                                   >  | | <- file-item (thumbnail variant: png/svg)
+|  | |[img] | filename.png                      >  | |    file-thumb + file-info + file-chevron
+|  | |      | 12.3 KB                           >  | |
+|  | +------+                                      | |
+|  +----------------------------------------------+ |
+|  +----------------------------------------------+ |
+|  | 📄  data.json                              >  | | <- file-item (emoji icon variant: json/txt)
+|  |     1.2 KB                                    | |    file-icon + file-info + file-chevron
+|  +----------------------------------------------+ |
+|                                                   | <- file-list (scrollable)
++--------------------------------------------------+
+
+## Elements:
+| ascii                | type          | text_pattern                              | region        | cond                                      |
+|----------------------|---------------|-------------------------------------------|---------------|-------------------------------------------|
+| file-input-hidden    | input[file]   | -                                         | files-header  | always (display:none)                     |
+| [Upload File]        | button        | "Upload File" / "Uploading..."            | files-header  | always (disabled when uploading)          |
+| upload-error         | div           | error message string                      | files-panel   | uploadError defined                       |
+| Loading...           | div           | "Loading files..."                        | files-panel   | loading=true                              |
+| empty                | div           | "No files yet..."                         | files-panel   | !loading && visibleFiles.length === 0     |
+| file-item            | div           | clickable row                             | file-list     | per file in visibleFiles                  |
+| file-thumb           | div           | img thumbnail                             | file-item     | isImageFile(file.type) (png, svg)         |
+| thumb-img            | img           | lazy-loaded thumbnail with @error hide    | file-thumb    | isImageFile(file.type)                    |
+| file-icon            | span          | emoji icon (📄 json, 📝 txt, 📁 default) | file-item     | !isImageFile(file.type)                   |
+| file-info            | div           | file-name + file-size                     | file-item     | always                                    |
+| file-chevron         | svg           | right arrow chevron                       | file-item     | always                                    |
+
+## States:
+| state        | visual changes                                                        |
+|--------------|-----------------------------------------------------------------------|
+| loading      | "Loading files..." shown. File list hidden.                           |
+| empty        | "No files yet..." shown. File list hidden.                            |
+| populated    | File list shown with thumbnail or icon per file type.                 |
+| uploading    | Upload button disabled, text changes to "Uploading...".               |
+| upload-error | Red error banner shown below header.                                  |
+
+## Interaction Model:
+| action              | trigger                        | effect                                    |
+|---------------------|--------------------------------|-------------------------------------------|
+| Upload file         | Click Upload button            | Opens native file picker via hidden input  |
+| File selected       | File input change event        | uploadFile() called, error caught if any   |
+| Click file          | Click file-item row            | Emits file-click(name, type, mtime)        |
+| Image load error    | img @error event               | Hides broken image element                 |

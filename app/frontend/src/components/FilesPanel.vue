@@ -1,4 +1,4 @@
-<!-- FilesPanel: Displays project file list with icons, sizes, and click-to-open. -->
+<!-- FilesPanel: Displays project file list with thumbnails/icons, sizes, upload, and click-to-open. -->
 <script setup lang="ts">
 import { computed, ref } from 'vue'
 import { useInjectedFiles, type FileType } from '../composables/useFiles'
@@ -7,17 +7,18 @@ const emit = defineEmits<{
   'file-click': [filename: string, type: FileType, mtime: number]
 }>()
 
-const { files, loading, uploading, uploadFile } = useInjectedFiles()
+const { files, loading, uploading, uploadFile, getFileUrl } = useInjectedFiles()
 
 const fileInput = ref<HTMLInputElement | null>(null)
 const uploadError = ref<string>()
 
 const visibleFiles = computed(() => files.value.filter((f) => !f.is_hidden))
 
+const isImageFile = (type: FileType): boolean => type === 'png' || type === 'svg'
+
 const getIcon = (type: FileType): string => {
+  // Image types (png, svg) use thumbnails instead of icons
   switch (type) {
-    case 'png': return '🖼️'
-    case 'svg': return '🎨'
     case 'json': return '📄'
     case 'txt': return '📝'
     default: return '📁'
@@ -80,7 +81,17 @@ const handleFileChange = async (event: Event) => {
         :data-file="file.name"
         @click="emit('file-click', file.name, file.type, file.mtime)"
       >
-        <span class="file-icon">{{ getIcon(file.type) }}</span>
+        <div v-if="isImageFile(file.type)" class="file-thumb">
+          <img
+            :src="getFileUrl(file.name, file.mtime)"
+            :alt="file.name"
+            class="thumb-img"
+            loading="lazy"
+            decoding="async"
+            @error="($event.target as HTMLImageElement).style.display = 'none'"
+          />
+        </div>
+        <span v-else class="file-icon">{{ getIcon(file.type) }}</span>
         <div class="file-info">
           <div class="file-name">{{ file.name }}</div>
           <div class="file-size">{{ formatSize(file.size) }}</div>
@@ -152,8 +163,30 @@ const handleFileChange = async (event: Event) => {
   background: var(--border);
 }
 
+.file-thumb {
+  width: 2.5rem;
+  height: 2.5rem;
+  border-radius: 0.375rem;
+  overflow: hidden;
+  flex-shrink: 0;
+  background: var(--border);
+}
+
+.thumb-img {
+  width: 100%;
+  height: 100%;
+  object-fit: cover;
+  display: block;
+}
+
 .file-icon {
+  width: 2.5rem;
+  height: 2.5rem;
   font-size: 1.5rem;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  flex-shrink: 0;
 }
 
 .file-info {
