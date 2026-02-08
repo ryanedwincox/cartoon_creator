@@ -173,14 +173,13 @@ async def stream_agent_response(project_id: str, prompt: str) -> AsyncGenerator[
 
         full_response = "".join(response_parts)
 
-        # Check for new images
-        images = await asyncio.to_thread(
-            lambda: [
-                f.name
-                for f in project_dir.iterdir()
-                if f.suffix.lower() == ".png" and not f.name.startswith(".")
-            ]
+        # Check for new images — prefer SVGs over PNGs (PNGs are just renders of SVGs)
+        all_files = await asyncio.to_thread(
+            lambda: [f for f in project_dir.iterdir() if not f.name.startswith(".")]
         )
+        svgs = sorted(f.name for f in all_files if f.suffix.lower() == ".svg")
+        pngs = sorted(f.name for f in all_files if f.suffix.lower() == ".png")
+        images = svgs if svgs else pngs
 
         yield f"data: {json.dumps({'type': 'done', 'content': full_response, 'images': images})}\n\n"
 

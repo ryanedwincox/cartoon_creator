@@ -92,13 +92,10 @@ const handleKeyDown = async (e: KeyboardEvent) => {
 
         <!-- Inline images -->
         <div v-if="msg.images?.length" class="message-images">
-          <img
-            v-for="img in msg.images"
-            :key="img"
-            :src="`${DATA_BASE}/${projectId}/${img}`"
-            :alt="img"
-            class="message-image"
-          />
+          <div v-for="img in msg.images" :key="img" class="message-image-item">
+            <img :src="`${DATA_BASE}/${projectId}/${img}`" :alt="img" class="message-image" />
+            <span class="message-image-filename">{{ img }}</span>
+          </div>
         </div>
 
         <!-- Frozen elapsed timer on the last assistant message when done -->
@@ -235,17 +232,33 @@ const handleKeyDown = async (e: KeyboardEvent) => {
 }
 
 .message-images {
-  display: flex;
-  flex-wrap: wrap;
+  display: grid;
+  grid-template-columns: 1fr 1fr;
   gap: 0.5rem;
   margin-top: 0.5rem;
 }
 
+.message-image-item {
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+}
+
 .message-image {
-  max-width: 200px;
-  max-height: 200px;
+  max-width: 100%;
+  max-height: 140px;
   border-radius: 0.5rem;
   cursor: pointer;
+}
+
+.message-image-filename {
+  font-size: 0.65rem;
+  color: var(--text-muted);
+  margin-top: 0.2rem;
+  max-width: 100%;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
 }
 
 .typing-indicator {

@@ -14,7 +14,10 @@
 |  +--------------------------------------------+  |
 |  |                          You               |  | <- message.user (right-aligned)
 |  |                    "user text"              |  |
-|  |                      [img] [img]           |  | <- message-images (cond)
+|  |                      +-------+ +-------+   |  | <- message-images (grid 1fr 1fr)
+|  |                      | [img] | | [img] |   |  |   message-image-item: img + filename
+|  |                      |"name" | |"name" |   |  |
+|  |                      +-------+ +-------+   |  |
 |  +--------------------------------------------+  |
 |                                                  |
 |  +--------------------------------------------+  |
@@ -49,7 +52,8 @@
 | Loading...           | div           | "Loading conversation..."          | messages        | loading=true                             |
 | message.user         | div           | user message content               | messages        | per message where role=user              |
 | message.assistant    | div           | assistant message content          | messages        | per message where role=assistant         |
-| message-images       | img[]         | -                                  | messages        | msg.images?.length > 0                   |
+| message-images       | div(grid)     | grid of message-image-item divs    | messages        | msg.images?.length > 0                   |
+| message-image-item   | div           | img + message-image-filename span  | message-images  | per image in msg.images                  |
 | thinking-dots        | span x3       | -                                  | messages        | agentPhase in (sending, waiting)         |
 | thinking-text        | span          | "Thinking..."                      | messages        | agentPhase in (sending, waiting)         |
 | elapsed-timer        | span          | /\d+s|\d+:\d{2}/                   | messages        | agentPhase not idle; also on last assistant msg when done |
