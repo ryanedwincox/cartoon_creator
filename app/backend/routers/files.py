@@ -1,7 +1,7 @@
 """File operations for projects."""
 import asyncio
 from pathlib import Path
-from typing import Literal
+from typing import Literal, get_args
 
 from fastapi import APIRouter, HTTPException, UploadFile, File
 from fastapi.responses import FileResponse
@@ -12,6 +12,9 @@ from config import DATA_DIR
 router = APIRouter()
 
 FileType = Literal["png", "svg", "json", "txt", "other"]
+
+FILE_TYPE_ORDER: dict[FileType, int] = {"png": 0, "svg": 1, "json": 2, "txt": 3, "other": 4}
+assert set(FILE_TYPE_ORDER) == set(get_args(FileType)), "FILE_TYPE_ORDER must cover all FileType values"
 
 
 class FileInfo(BaseModel):
@@ -62,7 +65,7 @@ async def list_files(project_id: str) -> list[FileInfo]:
 
     def _collect_files() -> list[FileInfo]:
         result = []
-        for f in sorted(project_dir.iterdir()):
+        for f in project_dir.iterdir():
             if not f.is_file():
                 continue
             stat = f.stat()
@@ -73,6 +76,7 @@ async def list_files(project_id: str) -> list[FileInfo]:
                 mtime=stat.st_mtime,
                 is_hidden=f.name.startswith("."),
             ))
+        result.sort(key=lambda fi: (FILE_TYPE_ORDER[fi.type], fi.name.lower()))
         return result
 
     return await asyncio.to_thread(_collect_files)
