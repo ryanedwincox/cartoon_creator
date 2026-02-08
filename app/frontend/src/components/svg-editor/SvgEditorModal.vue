@@ -5,14 +5,18 @@ import { useSvgEditor } from '../../composables/useSvgEditor'
 import SvgCanvas from './SvgCanvas.vue'
 import Toolbar from './Toolbar.vue'
 import LayersPanel from './LayersPanel.vue'
+import NavButton from '../NavButton.vue'
 
 const props = defineProps<{
   projectId: string
   filename: string
+  hasPrev: boolean
+  hasNext: boolean
 }>()
 
 const emit = defineEmits<{
   close: []
+  navigate: [direction: -1 | 1]
 }>()
 
 const API_BASE = '/api'
@@ -62,6 +66,11 @@ const handleClose = async () => {
     saveStatus.value = 'error'
   }
   emit('close')
+}
+
+const handleNavigate = async (direction: -1 | 1) => {
+  await persistSvg()
+  emit('navigate', direction)
 }
 
 // beforeunload uses fire-and-forget fetch because the browser does not allow
@@ -192,6 +201,11 @@ onUnmounted(() => {
 
     <!-- Toolbar -->
     <Toolbar />
+
+    <div class="nav-overlay">
+      <NavButton :direction="-1" :disabled="!hasPrev" @click="handleNavigate(-1)" />
+      <NavButton :direction="1" :disabled="!hasNext" @click="handleNavigate(1)" />
+    </div>
   </div>
 </template>
 
@@ -282,5 +296,19 @@ onUnmounted(() => {
 .btn:disabled {
   opacity: 0.5;
   cursor: not-allowed;
+}
+
+.nav-overlay {
+  position: absolute;
+  bottom: 5rem;
+  left: 1rem;
+  right: 1rem;
+  display: flex;
+  justify-content: space-between;
+  pointer-events: none;
+}
+
+.nav-overlay > * {
+  pointer-events: auto;
 }
 </style>

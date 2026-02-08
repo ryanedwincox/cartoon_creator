@@ -1,12 +1,15 @@
-<!-- ImageViewer: Full-screen zoomable image viewer with pinch/scroll zoom and pan. -->
+<!-- ImageViewer: Full-screen zoomable image viewer with pinch/scroll zoom, pan, and arrow-button navigation. -->
 <script setup lang="ts">
 import { ref, computed, onMounted, onUnmounted } from 'vue'
-import { useSwipeNavigation } from '../composables/useSwipeNavigation'
+import { useKeyboardNavigation } from '../composables/useKeyboardNavigation'
+import NavButton from './NavButton.vue'
 
 const props = defineProps<{
   projectId: string
   filename: string
   mtime?: number | null
+  hasPrev: boolean
+  hasNext: boolean
 }>()
 
 const emit = defineEmits<{
@@ -30,15 +33,11 @@ const isDragging = ref(false)
 const lastX = ref(0)
 const lastY = ref(0)
 
-const {
-  handleTouchStart: swipeTouchStart,
-  handleTouchMove: swipeTouchMove,
-  handleTouchEnd: swipeTouchEnd,
-} = useSwipeNavigation((dir) => emit('navigate', dir), {
+const containerRef = ref<HTMLElement | null>(null)
+
+useKeyboardNavigation((dir) => emit('navigate', dir), {
   enabledWhen: () => scale.value <= 1,
 })
-
-const containerRef = ref<HTMLElement | null>(null)
 
 const handleTouchStart = (e: TouchEvent) => {
   if (e.touches.length === 2) {
@@ -47,15 +46,11 @@ const handleTouchStart = (e: TouchEvent) => {
     const dy = e.touches[0].clientY - e.touches[1].clientY
     initialDistance.value = Math.sqrt(dx * dx + dy * dy)
     initialScale.value = scale.value
-  } else if (e.touches.length === 1) {
-    if (scale.value <= 1) {
-      swipeTouchStart(e)
-    } else {
-      // Pan start (zoomed in)
-      isDragging.value = true
-      lastX.value = e.touches[0].clientX
-      lastY.value = e.touches[0].clientY
-    }
+  } else if (e.touches.length === 1 && scale.value > 1) {
+    // Pan start (zoomed in)
+    isDragging.value = true
+    lastX.value = e.touches[0].clientX
+    lastY.value = e.touches[0].clientY
   }
 }
 
@@ -67,8 +62,6 @@ const handleTouchMove = (e: TouchEvent) => {
     const distance = Math.sqrt(dx * dx + dy * dy)
     const newScale = initialScale.value * (distance / initialDistance.value)
     scale.value = Math.min(Math.max(0.5, newScale), 5)
-  } else if (e.touches.length === 1 && scale.value <= 1) {
-    swipeTouchMove(e)
   } else if (e.touches.length === 1 && isDragging.value && scale.value > 1) {
     // Pan
     const dx = e.touches[0].clientX - lastX.value
@@ -81,7 +74,6 @@ const handleTouchMove = (e: TouchEvent) => {
 }
 
 const handleTouchEnd = () => {
-  swipeTouchEnd()
   isDragging.value = false
 }
 
@@ -135,6 +127,11 @@ onUnmounted(() => {
           transform: `scale(${scale}) translate(${translateX / scale}px, ${translateY / scale}px)`,
         }"
       />
+    </div>
+
+    <div class="nav-overlay">
+      <NavButton :direction="-1" :disabled="!hasPrev" @click="emit('navigate', -1)" />
+      <NavButton :direction="1" :disabled="!hasNext" @click="emit('navigate', 1)" />
     </div>
   </div>
 </template>
@@ -195,5 +192,20 @@ onUnmounted(() => {
   max-height: 100%;
   object-fit: contain;
   transition: transform 0.1s ease-out;
+}
+
+.nav-overlay {
+  position: absolute;
+  bottom: 2rem;
+  left: 1rem;
+  right: 1rem;
+  display: flex;
+  justify-content: space-between;
+  pointer-events: none;
+  color: white;
+}
+
+.nav-overlay > * {
+  pointer-events: auto;
 }
 </style>

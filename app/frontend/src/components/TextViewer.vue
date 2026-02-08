@@ -1,11 +1,14 @@
-<!-- TextViewer: Full-screen modal for viewing text file contents with swipe navigation. -->
+<!-- TextViewer: Full-screen modal for viewing text file contents with arrow-button navigation. -->
 <script setup lang="ts">
 import { ref, onMounted } from 'vue'
 import { useInjectedFiles } from '../composables/useFiles'
-import { useSwipeNavigation } from '../composables/useSwipeNavigation'
+import { useKeyboardNavigation } from '../composables/useKeyboardNavigation'
+import NavButton from './NavButton.vue'
 
 const props = defineProps<{
   filename: string
+  hasPrev: boolean
+  hasNext: boolean
 }>()
 
 const emit = defineEmits<{
@@ -19,9 +22,7 @@ const content = ref('')
 const loading = ref(true)
 const error = ref<string>()
 
-const { handleTouchStart, handleTouchMove, handleTouchEnd } = useSwipeNavigation(
-  (dir) => emit('navigate', dir),
-)
+useKeyboardNavigation((dir) => emit('navigate', dir))
 
 onMounted(async () => {
   try {
@@ -47,15 +48,15 @@ onMounted(async () => {
       <span />
     </header>
 
-    <div
-      class="text-viewer-content"
-      @touchstart="handleTouchStart"
-      @touchmove="handleTouchMove"
-      @touchend="handleTouchEnd"
-    >
+    <div class="text-viewer-content">
       <div v-if="loading" class="status">Loading...</div>
       <div v-else-if="error" class="status error">{{ error }}</div>
       <pre v-else class="text-content">{{ content }}</pre>
+    </div>
+
+    <div class="nav-overlay">
+      <NavButton :direction="-1" :disabled="!hasPrev" @click="emit('navigate', -1)" />
+      <NavButton :direction="1" :disabled="!hasNext" @click="emit('navigate', 1)" />
     </div>
   </div>
 </template>
@@ -122,5 +123,20 @@ onMounted(async () => {
   font-size: 0.875rem;
   line-height: 1.6;
   color: var(--text, #e0e0e0);
+}
+
+.nav-overlay {
+  position: absolute;
+  bottom: 2rem;
+  left: 1rem;
+  right: 1rem;
+  display: flex;
+  justify-content: space-between;
+  pointer-events: none;
+  color: white;
+}
+
+.nav-overlay > * {
+  pointer-events: auto;
 }
 </style>

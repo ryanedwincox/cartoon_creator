@@ -27,10 +27,23 @@ const viewingImageMtime = ref<number | null>(null)
 const viewingText = ref<string | null>(null)
 const editingSvg = ref<string | null>(null)
 
-/** Viewable (non-hidden) files in display order, used for swipe navigation. */
+/** Viewable (non-hidden) files in display order, used for file navigation. */
 const viewableFiles = computed<FileInfo[]>(() =>
   files.value.filter((f) => !f.is_hidden && VIEWABLE_TYPES.includes(f.type)),
 )
+
+const currentViewerFile = computed(() =>
+  viewingImage.value ?? viewingText.value ?? editingSvg.value,
+)
+const currentFileIndex = computed(() => {
+  if (!currentViewerFile.value) return -1
+  return viewableFiles.value.findIndex((f) => f.name === currentViewerFile.value)
+})
+const hasPrev = computed(() => currentFileIndex.value > 0)
+const hasNext = computed(() => {
+  const idx = currentFileIndex.value
+  return idx >= 0 && idx < viewableFiles.value.length - 1
+})
 
 onMounted(async () => {
   try {
@@ -59,13 +72,10 @@ const handleFileClick = (filename: string, type: FileType, mtime: number) => {
 
 /** Open the file at the given offset relative to the currently-viewed file. */
 const navigateFile = (direction: -1 | 1) => {
-  const currentName = viewingImage.value ?? viewingText.value ?? editingSvg.value
-  if (!currentName) return
-
-  const list = viewableFiles.value
-  const idx = list.findIndex((f) => f.name === currentName)
+  const idx = currentFileIndex.value
   if (idx === -1) return
 
+  const list = viewableFiles.value
   const nextIdx = idx + direction
   if (nextIdx < 0 || nextIdx >= list.length) return
 
@@ -144,6 +154,8 @@ const navigateFile = (direction: -1 | 1) => {
       :project-id="id"
       :filename="viewingImage"
       :mtime="viewingImageMtime"
+      :has-prev="hasPrev"
+      :has-next="hasNext"
       @close="viewingImage = null"
       @navigate="navigateFile"
     />
@@ -152,6 +164,8 @@ const navigateFile = (direction: -1 | 1) => {
     <TextViewer
       v-if="viewingText"
       :filename="viewingText"
+      :has-prev="hasPrev"
+      :has-next="hasNext"
       @close="viewingText = null"
       @navigate="navigateFile"
     />
@@ -161,7 +175,10 @@ const navigateFile = (direction: -1 | 1) => {
       v-if="editingSvg"
       :project-id="id"
       :filename="editingSvg"
+      :has-prev="hasPrev"
+      :has-next="hasNext"
       @close="editingSvg = null"
+      @navigate="navigateFile"
     />
   </div>
 </template>
