@@ -31,8 +31,15 @@ class SendMessageRequest(BaseModel):
 
 
 def get_conversation_path(project_id: str) -> Path:
-    """Get path to conversation file."""
     return DATA_DIR / project_id / ".conversation.json"
+
+
+def detect_images(project_dir: Path) -> list[str]:
+    """Detect images in a project dir, preferring SVGs over PNGs."""
+    all_files = [f for f in project_dir.iterdir() if not f.name.startswith(".")]
+    svgs = sorted(f.name for f in all_files if f.suffix.lower() == ".svg")
+    pngs = sorted(f.name for f in all_files if f.suffix.lower() == ".png")
+    return svgs if svgs else pngs
 
 
 def load_conversation(project_id: str) -> list[ChatMessage]:
@@ -174,12 +181,7 @@ async def stream_agent_response(project_id: str, prompt: str) -> AsyncGenerator[
         full_response = "".join(response_parts)
 
         # Check for new images — prefer SVGs over PNGs (PNGs are just renders of SVGs)
-        all_files = await asyncio.to_thread(
-            lambda: [f for f in project_dir.iterdir() if not f.name.startswith(".")]
-        )
-        svgs = sorted(f.name for f in all_files if f.suffix.lower() == ".svg")
-        pngs = sorted(f.name for f in all_files if f.suffix.lower() == ".png")
-        images = svgs if svgs else pngs
+        images = await asyncio.to_thread(lambda: detect_images(project_dir))
 
         yield f"data: {json.dumps({'type': 'done', 'content': full_response, 'images': images})}\n\n"
 
@@ -193,10 +195,15 @@ async def stream_agent_response(project_id: str, prompt: str) -> AsyncGenerator[
 
 @router.get("/{project_id}/history")
 async def get_history(project_id: str) -> list[ChatMessage]:
-    """Get conversation history."""
     if not (DATA_DIR / project_id).exists():
         raise HTTPException(status_code=404, detail="Project not found")
-    return load_conversation(project_id)
+    messages = load_conversation(project_id)
+    # Refresh image lists from filesystem so saved PNG refs become SVGs
+    current_images = await asyncio.to_thread(lambda: detect_images(DATA_DIR / project_id))
+    for msg in messages:
+        if msg.role == "assistant" and msg.images:
+            msg.images = current_images
+    return messages
 
 
 @router.post("/{project_id}/send")
