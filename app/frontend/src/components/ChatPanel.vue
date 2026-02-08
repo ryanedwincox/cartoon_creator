@@ -2,12 +2,14 @@
 <script setup lang="ts">
 import { ref, onMounted, nextTick, watch } from 'vue'
 import { useChat } from '../composables/useChat'
+import { useElapsedTimer } from '../composables/useElapsedTimer'
 
 const props = defineProps<{
   projectId: string
 }>()
 
-const { messages, loading, streaming, currentResponse, loadHistory, sendMessage, interrupt, clearHistory } = useChat(props.projectId)
+const { messages, loading, streaming, currentResponse, agentPhase, loadHistory, sendMessage, interrupt, clearHistory } = useChat(props.projectId)
+const { formatted: elapsedFormatted, start: startTimer, stop: stopTimer, reset: resetTimer } = useElapsedTimer()
 
 const messageInput = ref('')
 const messagesContainer = ref<HTMLElement | null>(null)
@@ -30,7 +32,19 @@ const scrollToBottom = () => {
   })
 }
 
-watch([messages, currentResponse], scrollToBottom)
+watch([messages, currentResponse, agentPhase], scrollToBottom)
+
+// Drive the timer from agentPhase transitions
+watch(agentPhase, (phase) => {
+  if (phase === 'sending') {
+    resetTimer()
+    startTimer()
+  } else if (phase === 'done' || phase === 'error' || phase === 'interrupted') {
+    stopTimer()
+  } else if (phase === 'idle') {
+    resetTimer()
+  }
+})
 
 const handleSend = async () => {
   const text = messageInput.value.trim()
@@ -56,7 +70,7 @@ const handleKeyDown = async (e: KeyboardEvent) => {
         Clear
       </button>
       <button
-        v-if="streaming"
+        v-if="agentPhase === 'waiting' || agentPhase === 'streaming'"
         class="btn btn-secondary btn-sm"
         @click="interrupt"
       >
@@ -88,12 +102,46 @@ const handleKeyDown = async (e: KeyboardEvent) => {
         </div>
       </div>
 
-      <!-- Streaming response -->
-      <div v-if="streaming && currentResponse" class="message assistant">
-        <div class="message-role">Agent</div>
-        <div class="message-content">{{ currentResponse }}</div>
-        <span class="typing-indicator">▋</span>
-      </div>
+      <!-- Agent activity indicator -->
+      <template v-if="agentPhase !== 'idle'">
+
+        <!-- Sending/Waiting state: thinking dots + timer -->
+        <div v-if="agentPhase === 'sending' || agentPhase === 'waiting'" class="thinking-indicator">
+          <div class="thinking-dots">
+            <span></span><span></span><span></span>
+          </div>
+          <span class="thinking-text">
+            {{ agentPhase === 'sending' ? 'Sending...' : 'Agent is thinking...' }}
+          </span>
+          <span class="elapsed-timer">{{ elapsedFormatted }}</span>
+        </div>
+
+        <!-- Streaming state: response text + cursor + timer -->
+        <div v-if="agentPhase === 'streaming'" class="message assistant">
+          <div class="message-role">Agent</div>
+          <div class="message-content">{{ currentResponse }}<span class="typing-indicator">▋</span></div>
+          <div class="stream-meta">
+            <span class="elapsed-timer">{{ elapsedFormatted }}</span>
+          </div>
+        </div>
+
+        <!-- Done state: completion flash -->
+        <div v-if="agentPhase === 'done'" class="completion-flash">
+          <span class="completion-icon">✓</span>
+          <span>Completed in {{ elapsedFormatted }}</span>
+        </div>
+
+        <!-- Interrupted state -->
+        <div v-if="agentPhase === 'interrupted'" class="completion-flash interrupted">
+          <span>Interrupted at {{ elapsedFormatted }}</span>
+        </div>
+
+        <!-- Error state -->
+        <div v-if="agentPhase === 'error'" class="completion-flash error">
+          <span>Error after {{ elapsedFormatted }}</span>
+        </div>
+
+      </template>
     </div>
 
     <!-- Input -->
@@ -251,4 +299,93 @@ const handleKeyDown = async (e: KeyboardEvent) => {
 .send-btn:disabled {
   opacity: 0.5;
 }
+
+/* --- Agent activity feedback styles --- */
+
+.thinking-indicator {
+  display: flex;
+  align-items: center;
+  gap: 0.5rem;
+  padding: 0.75rem 1rem;
+  background: var(--card-bg);
+  border: 1px solid var(--border);
+  border-radius: 1rem;
+  align-self: flex-start;
+  max-width: 85%;
+  color: var(--text-muted);
+  font-size: 0.9rem;
+}
+
+.thinking-dots {
+  display: flex;
+  gap: 3px;
+}
+
+.thinking-dots span {
+  width: 6px;
+  height: 6px;
+  border-radius: 50%;
+  background: var(--primary);
+  animation: dot-bounce 1.4s ease-in-out infinite;
+}
+
+.thinking-dots span:nth-child(2) { animation-delay: 0.2s; }
+.thinking-dots span:nth-child(3) { animation-delay: 0.4s; }
+
+@keyframes dot-bounce {
+  0%, 80%, 100% { opacity: 0.3; transform: scale(0.8); }
+  40% { opacity: 1; transform: scale(1); }
+}
+
+.thinking-text {
+  flex: 1;
+}
+
+.elapsed-timer {
+  font-family: 'SF Mono', 'Fira Code', ui-monospace, monospace;
+  font-size: 0.75rem;
+  color: var(--text-muted);
+  min-width: 2.5rem;
+  text-align: right;
+}
+
+.stream-meta {
+  display: flex;
+  justify-content: flex-end;
+  margin-top: 0.25rem;
+}
+
+.completion-flash {
+  display: flex;
+  align-items: center;
+  gap: 0.5rem;
+  padding: 0.5rem 1rem;
+  border-radius: 1rem;
+  align-self: flex-start;
+  font-size: 0.85rem;
+  color: var(--tag-completed);
+  background: var(--card-bg);
+  border: 1px solid var(--tag-completed);
+  animation: fade-in 0.3s ease-out;
+}
+
+.completion-flash.interrupted {
+  color: var(--tag-in-progress);
+  border-color: var(--tag-in-progress);
+}
+
+.completion-flash.error {
+  color: var(--error);
+  border-color: var(--error);
+}
+
+.completion-icon {
+  font-weight: bold;
+}
+
+@keyframes fade-in {
+  from { opacity: 0; transform: translateY(4px); }
+  to { opacity: 1; transform: translateY(0); }
+}
+
 </style>

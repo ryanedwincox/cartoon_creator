@@ -156,6 +156,7 @@ async def stream_agent_response(project_id: str, prompt: str) -> AsyncGenerator[
         )
 
         active_agents[project_id] = process
+        yield f"data: {json.dumps({'type': 'started', 'content': ''})}\n\n"
 
         response_parts: list[str] = []
 
