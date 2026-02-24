@@ -1,4 +1,6 @@
 # CLI tool: Generates cartoon images via Gemini API from text descriptions. I/O: (description, refs) -> PNG file
+from __future__ import annotations
+
 import urllib.request
 import urllib.error
 import io
@@ -8,6 +10,9 @@ import sys
 import os
 import re
 import mimetypes
+import datetime
+import shutil
+from pathlib import Path
 from PIL import Image
 
 REF_SIZE = (300, 300)
@@ -15,6 +20,62 @@ REF_SIZE = (300, 300)
 API_KEY = os.environ.get("GEMINI_API_KEY", "")
 MODEL = "gemini-3-pro-image-preview"
 URL = f"https://generativelanguage.googleapis.com/v1beta/models/{MODEL}:generateContent?key={API_KEY}"
+
+
+def backup_image(
+    output_file: str | Path, output_dir: Path, timestamp: datetime.datetime,
+) -> str | None:
+    try:
+        backup_dir = output_dir / ".backups"
+        backup_dir.mkdir(parents=True, exist_ok=True)
+
+        p = Path(output_file)
+        backup_name = f"{p.stem}_{timestamp.strftime('%Y%m%dT%H%M%S')}{p.suffix}"
+        backup_path = backup_dir / backup_name
+
+        shutil.copy2(output_file, backup_path)
+        return str(Path(".backups") / backup_name)
+    except OSError as e:
+        print(f"Warning: failed to create backup: {e}", file=sys.stderr)
+        return None
+
+
+def log_generation(
+    output_file: str | Path,
+    output_dir: Path,
+    timestamp: datetime.datetime,
+    description: str,
+    ref_files: list[str],
+    status: str,
+    backup_path: str | None = None,
+) -> None:
+    try:
+        log_path = output_dir / ".generation-log.md"
+        ts_iso = timestamp.isoformat(timespec="seconds")
+
+        lines = [
+            "---",
+            f"### {ts_iso}",
+            "",
+            f"- **Output:** {Path(output_file).name}",
+            f"- **Status:** {status}",
+        ]
+        if backup_path:
+            lines.append(f"- **Backup:** {backup_path}")
+        lines.append(f"- **Prompt:** {description}")
+        if ref_files:
+            lines.append("- **References:**")
+            for ref in ref_files:
+                lines.append(f"  - {ref}")
+        else:
+            lines.append("- **References:** (none)")
+        lines.append("")
+
+        with open(log_path, "a", encoding="utf-8") as f:
+            f.write("\n".join(lines) + "\n")
+    except OSError as e:
+        print(f"Warning: failed to write generation log: {e}", file=sys.stderr)
+
 
 if len(sys.argv) < 2:
     print(f"Usage: {sys.argv[0]} <description> [output.png] [--ref image1.png image2.png ...]", file=sys.stderr)
@@ -81,6 +142,9 @@ try:
     if not image_data:
         print("No image returned in response", file=sys.stderr)
         print(json.dumps(result, indent=2), file=sys.stderr)
+        out_dir = Path(output_file).resolve().parent
+        ts = datetime.datetime.now(datetime.UTC)
+        log_generation(output_file, out_dir, ts, description, extra_refs, "failed — No image in API response")
         sys.exit(1)
 
     image_bytes = base64.b64decode(image_data)
@@ -89,7 +153,14 @@ try:
         f.write(image_bytes)
 
     print(f"Saved {output_file} ({len(image_bytes)} bytes)")
+    out_dir = Path(output_file).resolve().parent
+    ts = datetime.datetime.now(datetime.UTC)
+    backup_path = backup_image(output_file, out_dir, ts)
+    log_generation(output_file, out_dir, ts, description, extra_refs, "success", backup_path)
 except urllib.error.HTTPError as e:
     body = e.read().decode("utf-8")
     print(f"HTTP {e.code}: {body}", file=sys.stderr)
+    out_dir = Path(output_file).resolve().parent
+    ts = datetime.datetime.now(datetime.UTC)
+    log_generation(output_file, out_dir, ts, description, extra_refs, f"failed — HTTP {e.code}")
     sys.exit(1)
