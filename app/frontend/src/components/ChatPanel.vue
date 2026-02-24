@@ -8,6 +8,11 @@ const props = defineProps<{
   projectId: string
 }>()
 
+/** Emitted when agent phase reaches 'done' — signals files may have been created/modified. */
+const emit = defineEmits<{
+  'agent-done': []
+}>()
+
 const { messages, loading, streaming, currentResponse, agentPhase, loadHistory, sendMessage, interrupt, clearHistory } = useChat(props.projectId)
 const { formatted: elapsedFormatted, start: startTimer, stop: stopTimer, reset: resetTimer } = useElapsedTimer()
 
@@ -41,6 +46,8 @@ watch(agentPhase, (phase) => {
     startTimer()
   } else if (phase === 'done' || phase === 'error' || phase === 'interrupted') {
     stopTimer()
+    // Notify parent so file list can refresh after agent work
+    if (phase === 'done') emit('agent-done')
   } else if (phase === 'idle') {
     resetTimer()
   }

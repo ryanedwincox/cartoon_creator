@@ -30,6 +30,7 @@ export function useFiles(projectId: string) {
   const uploading = ref(false)
 
   const loadFiles = async () => {
+    if (loading.value) return
     loading.value = true
     try {
       const res = await fetch(`${API_BASE}/files/${projectId}`)

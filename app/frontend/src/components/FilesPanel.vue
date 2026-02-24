@@ -7,7 +7,7 @@ const emit = defineEmits<{
   'file-click': [filename: string, type: FileType, mtime: number]
 }>()
 
-const { files, loading, uploading, uploadFile, getFileUrl } = useInjectedFiles()
+const { files, loading, uploading, uploadFile, getFileUrl, loadFiles } = useInjectedFiles()
 
 const fileInput = ref<HTMLInputElement | null>(null)
 const uploadError = ref<string>()
@@ -56,6 +56,13 @@ const handleFileChange = async (event: Event) => {
         class="file-input-hidden"
         @change="handleFileChange"
       />
+      <button
+        class="btn btn-secondary btn-sm"
+        :disabled="loading"
+        @click="loadFiles"
+      >
+        {{ loading ? 'Refreshing...' : 'Refresh' }}
+      </button>
       <button
         class="btn btn-secondary btn-sm"
         :disabled="uploading"
@@ -113,6 +120,7 @@ const handleFileChange = async (event: Event) => {
 
 .files-header {
   display: flex;
+  gap: 0.5rem;
   justify-content: flex-end;
   padding-bottom: 0.75rem;
   border-bottom: 1px solid var(--border);

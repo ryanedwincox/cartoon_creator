@@ -1,6 +1,6 @@
 <!-- ProjectView: Agent chat and files interface for a single project. -->
 <script setup lang="ts">
-import { ref, provide, onMounted, computed } from 'vue'
+import { ref, provide, onMounted, computed, watch } from 'vue'
 import { useRouter } from 'vue-router'
 import { useProjects, type Project } from '../composables/useProjects'
 import { useFiles, FilesKey, VIEWABLE_TYPES, type FileType, type FileInfo } from '../composables/useFiles'
@@ -22,6 +22,13 @@ const { files, loadFiles } = filesContext
 
 const project = ref<Project | null>(null)
 const activeTab = ref<'chat' | 'files'>('chat')
+
+watch(activeTab, (tab) => {
+  if (tab === 'files') {
+    loadFiles()
+  }
+})
+
 const viewingImage = ref<string | null>(null)
 const viewingImageMtime = ref<number | null>(null)
 const viewingText = ref<string | null>(null)
@@ -117,6 +124,7 @@ const navigateFile = (direction: -1 | 1) => {
       <ChatPanel
         v-if="activeTab === 'chat'"
         :project-id="id"
+        @agent-done="loadFiles"
       />
       <FilesPanel
         v-else
