@@ -1,5 +1,7 @@
 # Cartoon Creator
 
+> 🤖 This project was generated entirely by Claude.
+
 An AI-assisted studio for making minimalist black-and-white comic strips. Describe a comic in plain language and an AI agent drafts a panel-by-panel concept, generates the artwork, traces it into clean vector line art, and lays in speech bubbles — all from a single chat interface, with a built-in SVG editor for the finishing touches.
 
 <p align="center">

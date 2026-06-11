@@ -42,34 +42,38 @@ useKeyboardNavigation((dir) => emit('navigate', dir), {
 const handleTouchStart = (e: TouchEvent) => {
   if (e.touches.length === 2) {
     // Pinch start
-    const dx = e.touches[0].clientX - e.touches[1].clientX
-    const dy = e.touches[0].clientY - e.touches[1].clientY
+    const [t0, t1] = [e.touches[0]!, e.touches[1]!]
+    const dx = t0.clientX - t1.clientX
+    const dy = t0.clientY - t1.clientY
     initialDistance.value = Math.sqrt(dx * dx + dy * dy)
     initialScale.value = scale.value
   } else if (e.touches.length === 1 && scale.value > 1) {
     // Pan start (zoomed in)
+    const t0 = e.touches[0]!
     isDragging.value = true
-    lastX.value = e.touches[0].clientX
-    lastY.value = e.touches[0].clientY
+    lastX.value = t0.clientX
+    lastY.value = t0.clientY
   }
 }
 
 const handleTouchMove = (e: TouchEvent) => {
   if (e.touches.length === 2) {
     // Pinch zoom
-    const dx = e.touches[0].clientX - e.touches[1].clientX
-    const dy = e.touches[0].clientY - e.touches[1].clientY
+    const [t0, t1] = [e.touches[0]!, e.touches[1]!]
+    const dx = t0.clientX - t1.clientX
+    const dy = t0.clientY - t1.clientY
     const distance = Math.sqrt(dx * dx + dy * dy)
     const newScale = initialScale.value * (distance / initialDistance.value)
     scale.value = Math.min(Math.max(0.5, newScale), 5)
   } else if (e.touches.length === 1 && isDragging.value && scale.value > 1) {
     // Pan
-    const dx = e.touches[0].clientX - lastX.value
-    const dy = e.touches[0].clientY - lastY.value
+    const t0 = e.touches[0]!
+    const dx = t0.clientX - lastX.value
+    const dy = t0.clientY - lastY.value
     translateX.value += dx
     translateY.value += dy
-    lastX.value = e.touches[0].clientX
-    lastY.value = e.touches[0].clientY
+    lastX.value = t0.clientX
+    lastY.value = t0.clientY
   }
 }
 

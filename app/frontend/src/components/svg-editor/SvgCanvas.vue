@@ -927,17 +927,17 @@ function pointsToPath(points: Point[]): string {
 
   // Single point → zero-length line (renders as dot with stroke-linecap="round")
   if (points.length === 1) {
-    return `M ${points[0].x} ${points[0].y} L ${points[0].x} ${points[0].y}`
+    return `M ${points[0]!.x} ${points[0]!.y} L ${points[0]!.x} ${points[0]!.y}`
   }
 
   // Catmull-Rom spline smoothing
-  let d = `M ${points[0].x} ${points[0].y}`
+  let d = `M ${points[0]!.x} ${points[0]!.y}`
 
   for (let i = 0; i < points.length - 1; i++) {
-    const p0 = points[Math.max(0, i - 1)]
-    const p1 = points[i]
-    const p2 = points[i + 1]
-    const p3 = points[Math.min(points.length - 1, i + 2)]
+    const p0 = points[Math.max(0, i - 1)]!
+    const p1 = points[i]!
+    const p2 = points[i + 1]!
+    const p3 = points[Math.min(points.length - 1, i + 2)]!
 
     const cp1x = p1.x + (p2.x - p0.x) / 6
     const cp1y = p1.y + (p2.y - p0.y) / 6
