@@ -155,11 +155,16 @@ async def stream_agent_response(project_id: str, prompt: str) -> AsyncGenerator[
     ]
 
     try:
+        # Remove CLAUDECODE env vars to allow nested Claude CLI invocation
+        import os
+        env = {k: v for k, v in os.environ.items() if not k.startswith("CLAUDE")}
+
         process = await asyncio.create_subprocess_exec(
             *cmd,
             stdout=asyncio.subprocess.PIPE,
             stderr=asyncio.subprocess.PIPE,
             cwd=str(project_dir),
+            env=env,
         )
 
         active_agents[project_id] = process

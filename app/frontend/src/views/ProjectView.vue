@@ -2,7 +2,7 @@
 <script setup lang="ts">
 import { ref, provide, onMounted, computed, watch } from 'vue'
 import { useRouter } from 'vue-router'
-import { useProjects, type Project } from '../composables/useProjects'
+import { useProjects, ALL_TAGS, type Project, type Tag } from '../composables/useProjects'
 import { useFiles, FilesKey, VIEWABLE_TYPES, type FileType, type FileInfo } from '../composables/useFiles'
 import ChatPanel from '../components/ChatPanel.vue'
 import FilesPanel from '../components/FilesPanel.vue'
@@ -15,13 +15,21 @@ const props = defineProps<{
 }>()
 
 const router = useRouter()
-const { getProject } = useProjects()
+const { getProject, updateProject } = useProjects()
 const filesContext = useFiles(props.id)
 provide(FilesKey, filesContext)
 const { files, loadFiles } = filesContext
 
 const project = ref<Project | null>(null)
 const activeTab = ref<'chat' | 'files'>('chat')
+const tagMenuOpen = ref(false)
+
+const handleTagSelect = async (tag: Tag) => {
+  tagMenuOpen.value = false
+  if (!project.value || project.value.tag === tag) return
+  const updated = await updateProject(project.value.id, { tag })
+  project.value = updated
+}
 
 watch(activeTab, (tab) => {
   if (tab === 'files') {
@@ -117,6 +125,28 @@ const navigateFile = (direction: -1 | 1) => {
         </svg>
       </button>
       <h1 class="header-title">{{ project.name }}</h1>
+      <div class="header-tag">
+        <button
+          :class="['tag', `tag-${project.tag}`, 'tag-trigger']"
+          @click="tagMenuOpen = !tagMenuOpen"
+        >
+          {{ project.tag.replace('_', ' ') }}
+          <span class="tag-caret">▾</span>
+        </button>
+        <template v-if="tagMenuOpen">
+          <div class="tag-menu-backdrop" @click="tagMenuOpen = false"></div>
+          <div class="tag-menu">
+            <button
+              v-for="t in ALL_TAGS"
+              :key="t"
+              :class="['tag', `tag-${t}`, { active: project.tag === t }]"
+              @click="handleTagSelect(t)"
+            >
+              {{ t.replace('_', ' ') }}
+            </button>
+          </div>
+        </template>
+      </div>
     </header>
 
     <!-- Content -->
@@ -219,5 +249,55 @@ const navigateFile = (direction: -1 | 1) => {
 .header svg {
   width: 1.5rem;
   height: 1.5rem;
+}
+
+.header-tag {
+  position: relative;
+  margin-left: auto;
+}
+
+.tag-trigger {
+  cursor: pointer;
+  border: none;
+  gap: 0.25rem;
+}
+
+.tag-caret {
+  font-size: 0.6rem;
+  opacity: 0.7;
+}
+
+.tag-menu-backdrop {
+  position: fixed;
+  inset: 0;
+  z-index: 10;
+}
+
+.tag-menu {
+  position: absolute;
+  top: calc(100% + 0.25rem);
+  right: 0;
+  z-index: 11;
+  background: var(--card-bg);
+  border: 1px solid var(--border);
+  border-radius: 0.5rem;
+  padding: 0.5rem;
+  box-shadow: 0 4px 12px rgba(0, 0, 0, 0.1);
+  display: flex;
+  flex-direction: column;
+  gap: 0.25rem;
+  min-width: 8rem;
+}
+
+.tag-menu .tag {
+  cursor: pointer;
+  border: none;
+  opacity: 0.6;
+  justify-content: center;
+}
+
+.tag-menu .tag.active,
+.tag-menu .tag:hover {
+  opacity: 1;
 }
 </style>
