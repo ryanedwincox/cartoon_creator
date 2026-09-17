@@ -1,4 +1,11 @@
+# Web server
 fastapi>=0.100.0
 uvicorn[standard]>=0.23.0
 python-multipart>=0.0.6
 aiofiles>=23.0.0
+
+# Image generation & tracing (used by generate_cartoon.py and trace_contour.py)
+Pillow>=10.0.0
+numpy>=1.24.0
+scipy>=1.11.0
+scikit-image>=0.22.0

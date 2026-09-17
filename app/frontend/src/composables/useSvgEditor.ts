@@ -251,7 +251,7 @@ export function useSvgEditor() {
   const updateBubble = (id: string, updates: Partial<BubbleData>) => {
     const idx = bubbles.value.findIndex(b => b.id === id)
     if (idx >= 0) {
-      bubbles.value[idx] = { ...bubbles.value[idx], ...updates }
+      bubbles.value[idx] = { ...bubbles.value[idx]!, ...updates }
     }
   }
 
@@ -798,7 +798,7 @@ export function useSvgEditor() {
       }
     }
 
-    fitToContent(doc.documentElement as SVGSVGElement)
+    fitToContent(doc.documentElement as unknown as SVGSVGElement)
   }
 
   const fitToContent = (svgRoot: SVGSVGElement | null = null) => {
@@ -917,7 +917,7 @@ function parseSvgDimensions(svgRoot: SVGSVGElement): SvgDimensions {
   if (viewBoxAttr) {
     const parts = viewBoxAttr.split(/[\s,]+/).map(Number)
     if (parts.length === 4 && parts.every(n => !isNaN(n))) {
-      return { originX: parts[0], originY: parts[1], width: parts[2], height: parts[3] }
+      return { originX: parts[0]!, originY: parts[1]!, width: parts[2]!, height: parts[3]! }
     }
   }
 
